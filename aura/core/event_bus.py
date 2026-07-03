@@ -57,21 +57,35 @@ class EventBus:
     Handlers execute in the emitter's thread — keep them fast.
     """
 
+    WILDCARD = "__ALL__"
+
     def __init__(self) -> None:
         self._handlers: dict[EventType, list[Callable]] = defaultdict(list)
+        self._wildcard_handlers: list[Callable] = []
 
-    def subscribe(self, event_type: EventType, handler: Callable) -> None:
-        """Register a handler for an event type."""
-        if handler not in self._handlers[event_type]:
-            self._handlers[event_type].append(handler)
-            logger.debug(f"Subscribed {handler.__qualname__} to {event_type.name}")
+    def subscribe(self, event_type: EventType | str, handler: Callable) -> None:
+        """Register a handler for an event type, or WILDCARD for all events."""
+        if event_type == self.WILDCARD:
+            if handler not in self._wildcard_handlers:
+                self._wildcard_handlers.append(handler)
+                logger.debug(f"Subscribed {handler.__qualname__} to WILDCARD")
+        else:
+            if handler not in self._handlers[event_type]:
+                self._handlers[event_type].append(handler)
+                logger.debug(f"Subscribed {handler.__qualname__} to {event_type.name}")
 
-    def unsubscribe(self, event_type: EventType, handler: Callable) -> None:
+    def unsubscribe(self, event_type: EventType | str, handler: Callable) -> None:
         """Remove a handler from an event type."""
-        try:
-            self._handlers[event_type].remove(handler)
-        except ValueError:
-            pass
+        if event_type == self.WILDCARD:
+            try:
+                self._wildcard_handlers.remove(handler)
+            except ValueError:
+                pass
+        else:
+            try:
+                self._handlers[event_type].remove(handler)
+            except ValueError:
+                pass
 
     def emit(self, event_type: EventType, payload: EventPayload | None = None) -> None:
         """
@@ -85,6 +99,15 @@ class EventBus:
             except Exception as exc:
                 logger.error(
                     f"Handler {handler.__qualname__} raised on {event_type.name}: {exc}",
+                    exc_info=True,
+                )
+        envelope = {"event": event_type.name, "payload": payload}
+        for handler in list(self._wildcard_handlers):
+            try:
+                handler(envelope)
+            except Exception as exc:
+                logger.error(
+                    f"Wildcard handler {handler.__qualname__} raised on {event_type.name}: {exc}",
                     exc_info=True,
                 )
 
