@@ -20,6 +20,7 @@
 
 </div>
 
+"Kommy" a phonetic evolution of "commy" (companion) turned into a proper name, distinct from the acronym pattern of AURA.
 ---
 
 ## The Problem
