@@ -203,7 +203,7 @@ def startup() -> None:
                 )
                 if result.is_empty:
                     tts.speak("I didn't catch that. Try again.")
-                    print("[PIPELINE] Ready — say 'Hey AURA' or press CTRL+SPACE")
+                    print("[PIPELINE] Ready — say 'Hey Kommy' or press CTRL+SPACE")
                     state_machine.force_idle()
                     return
                 command_text = result.text
@@ -239,7 +239,7 @@ def startup() -> None:
                 tts.speak(exec_result.output)
 
             tts.wait_until_idle()
-            print("[PIPELINE] Ready — say 'Hey AURA' or press CTRL+SPACE")
+            print("[PIPELINE] Ready — say 'Hey Kommy' or press CTRL+SPACE")
 
         except Exception as exc:
             logger = logging.getLogger("aura.main")
@@ -276,17 +276,17 @@ def startup() -> None:
     wake.start()
     logger = logging.getLogger("aura.main")
     logger.info(
-        "[AURA] Wake word: Tier 1=Whisper (hey aura) | "
+        "[AURA] Wake word: Tier 1=Whisper (hey kommy) | "
         "Tier 2=openwakeword | Tier 3=CTRL+SPACE"
     )
     wake.pause()
-    tts.speak("AURA online. Say Hey AURA or press Control Space to activate.")
+    tts.speak("Kommy online. Say Hey Kommy or press Control Space to activate.")
     tts.wait_until_idle()
     wake.resume()
     print("[8/8] Wake word listener active")
     print("\n" + "=" * 50)
     print("AURA Phase 2 Pipeline running.")
-    print("Say 'Hey AURA' or press CTRL+SPACE to activate.")
+    print("Say 'Hey Kommy' or press CTRL+SPACE to activate.")
     print("Press CTRL+C to shut down.")
     print("=" * 50)
 
@@ -295,7 +295,7 @@ def startup() -> None:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n\nShutting down AURA...")
+        print("\n\nShutting down Kommy...")
         wake.stop()
         mode_monitor.stop()
         print("Goodbye.")

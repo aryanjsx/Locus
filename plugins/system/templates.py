@@ -53,7 +53,7 @@ def _python_files(name: str) -> dict[str, str]:
             '    assert "Hello" in capsys.readouterr().out\n'
         ),
         "requirements.txt": "",
-        "README.md": f"# {name}\n\nA Python project scaffolded by AURA.\n",
+        "README.md": f"# {name}\n\nA Python project scaffolded by Kommy.\n",
         ".gitignore": _common_gitignore(),
     }
 
@@ -68,7 +68,7 @@ def _node_files(name: str) -> dict[str, str]:
             "{\n"
             f'  "name": "{name}",\n'
             '  "version": "1.0.0",\n'
-            f'  "description": "{name} — scaffolded by AURA",\n'
+            f'  "description": "{name} — scaffolded by Kommy",\n'
             '  "main": "src/index.js",\n'
             '  "scripts": {\n'
             '    "start": "node src/index.js",\n'
@@ -77,7 +77,7 @@ def _node_files(name: str) -> dict[str, str]:
             '  "license": "MIT"\n'
             "}\n"
         ),
-        "README.md": f"# {name}\n\nA Node.js project scaffolded by AURA.\n",
+        "README.md": f"# {name}\n\nA Node.js project scaffolded by Kommy.\n",
         ".gitignore": _common_gitignore(),
     }
 
@@ -102,7 +102,7 @@ def _react_files(name: str) -> dict[str, str]:
             "  return (\n"
             "    <div>\n"
             f"      <h1>{name}</h1>\n"
-            "      <p>Scaffolded by AURA.</p>\n"
+            "      <p>Scaffolded by Kommy.</p>\n"
             "    </div>\n"
             "  );\n"
             "}\n"
@@ -137,7 +137,7 @@ def _react_files(name: str) -> dict[str, str]:
             "  }\n"
             "}\n"
         ),
-        "README.md": f"# {name}\n\nA React project scaffolded by AURA.\n",
+        "README.md": f"# {name}\n\nA React project scaffolded by Kommy.\n",
         ".gitignore": _common_gitignore(),
     }
 
@@ -163,7 +163,7 @@ def _fastapi_files(name: str) -> dict[str, str]:
             "    assert response.status_code == 200\n"
         ),
         "requirements.txt": "fastapi>=0.100.0\nuvicorn[standard]>=0.23.0\n",
-        "README.md": f"# {name}\n\nA FastAPI project scaffolded by AURA.\n",
+        "README.md": f"# {name}\n\nA FastAPI project scaffolded by Kommy.\n",
         ".gitignore": _common_gitignore(),
     }
 

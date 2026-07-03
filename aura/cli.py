@@ -287,7 +287,7 @@ def run_repl(
     while True:
         text = src.get_command()
         if text is None:
-            sink.send("\nExiting AURA.")
+            sink.send("\nExiting Kommy.")
             return
         if not text:
             continue

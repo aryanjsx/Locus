@@ -80,7 +80,7 @@ class SessionController:
 
     def _on_wake_word(self, payload: dict) -> None:
         """
-        'Hey AURA' was detected.
+        'Hey Kommy' was detected.
         Start a session if one is not already running.
         """
         if self._active:
@@ -213,7 +213,7 @@ class SessionController:
         bus.emit(EventType.SESSION_ENDED, {"reason": "inactivity_timeout"})
 
         bus.emit(EventType.TTS_SPEAK_REQUEST, {
-            "text": "Going to sleep. Say Hey AURA when you need me.",
+            "text": "Going to sleep. Say Hey Kommy when you need me.",
             "priority": "high",
         })
 

@@ -9,6 +9,7 @@ aura:
   mode: "offline"
   language: "en"
   cli_mode: true
+  assistant_name: "Kommy"
 
 # [REQUIRED]
 sandbox:
@@ -117,8 +118,8 @@ stt:
 wake_word:
   engine:            "whisper"
   phrases:
-    - "hey aura"
-    - "aura"
+    - "hey kommy"
+    - "kommy"
   listen_duration:   1.5
   vad_threshold:     0.008
   vad_pre_frames:    3
@@ -126,6 +127,9 @@ wake_word:
   debug_scores:      true
 
   # openwakeword fallback (Tier 2)
+  # TODO: A custom "Hey Kommy" wake word model needs to be trained/downloaded.
+  #       The "hey_jarvis" model is a placeholder — it does NOT respond to "Hey Kommy".
+  #       Once a trained model is available, update oww_model to point to the new .onnx file.
   oww_model:         "hey_jarvis"
   oww_threshold:     0.05
   oww_patience:      1

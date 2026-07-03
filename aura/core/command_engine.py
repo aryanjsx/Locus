@@ -286,7 +286,7 @@ class CommandEngine:
             bus.emit(EventType.SESSION_ENDED, {"reason": "manual_voice_command"})
             return ExecutionResult(
                 success=True,
-                output="Goodbye. Say Hey AURA when you need me again.",
+                output="Goodbye. Say Hey Kommy when you need me again.",
                 executor=ExecutorType.SESSION,
             )
         if executor == ExecutorType.SYSTEM:

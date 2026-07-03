@@ -20,7 +20,8 @@
 
 </div>
 
-"Kommy" a phonetic evolution of "commy" (companion) turned into a proper name, distinct from the acronym pattern of AURA.
+**"Kommy"** — a phonetic evolution of "commy" (companion) turned into a proper name, distinct from the acronym pattern of AURA.
+
 ---
 
 ## The Problem
@@ -76,31 +77,31 @@ Project 'my-app' created with src/ tests/ README.md .gitignore requirements.txt
 AURA now **hears you, thinks locally, speaks back, and executes real actions** — powered entirely by local models.
 
 ```
-"Hey Jarvis, create a folder named project on desktop"
+"Hey Kommy, create a folder named project on desktop"
   → Wake word + command extracted in one step
   → Intent: SYSTEM_COMMAND (regex, 0ms)
   → Folder created instantly
   → TTS: "Folder project created on Desktop."
 
-"Hey Jarvis, what is Python?"
+"Hey Kommy, what is Python?"
   → Intent: GENERAL_KNOWLEDGE (regex, 0ms)
-  → Streams response from llama3.2:1b
+  → Streams response from mistral:7b-instruct-q4_0
   → TTS speaks first sentence in ~3s
 
-"Hey Jarvis, open Chrome"
+"Hey Kommy, open Chrome"
   → Intent: SYSTEM_COMMAND
   → Chrome opens immediately
   → TTS: "Opening Chrome."
 
 [CTRL+SPACE] → "Write a Python function to sort a list"
   → Intent: CODE_GENERATION
-  → Streams from deepseek-coder:6.7b
+  → Streams from deepseek-coder:7b-q4_0
 ```
 
 **Voice pipeline flow:**
 
 ```
-Wake ("Hey Jarvis") → Command Extraction → Regex Intent (0ms) → Execute / Stream LLM → TTS
+Wake ("Hey Kommy") → Command Extraction → Regex Intent (0ms) → Safety Gate → Execute / Stream LLM → TTS
 ```
 
 **System commands execute directly — no LLM round-trip:**
@@ -110,20 +111,23 @@ Wake ("Hey Jarvis") → Command Extraction → Regex Intent (0ms) → Execute / 
 | "Create a folder named X on desktop" | Creates the folder instantly |
 | "Delete file X from documents" | Deletes the file |
 | "Open Chrome / Notepad / any app" | Launches the application |
-| "Kill process chrome" | Terminates the process |
+| "Kill process chrome" | Asks for voice confirmation → terminates |
 | "CPU" / "RAM" | Speaks current system usage |
+| "Shutdown" / "Restart" | Asks for confirmation → executes |
 
-**7 intent types** classified instantly via regex (no LLM call):
+**9 intent types** classified instantly via regex (no LLM call):
 
 | Intent | Routed To | Example |
 |---|---|---|
-| `SYSTEM_COMMAND` | Direct execution | "Create folder", "Open Chrome", "Kill process" |
-| `CODE_GENERATION` | deepseek-coder:6.7b | "Write a REST endpoint in FastAPI" |
-| `GENERAL_KNOWLEDGE` | llama3.2:1b (streamed) | "Explain Docker networking" |
-| `DEV_TASK` | llama3.2:1b | "Push my code to GitHub" |
+| `SYSTEM_COMMAND` | SystemExecutor | "Create folder", "Open Chrome", "Kill process" |
+| `FILE_OPERATION` | SystemExecutor | "Rename file", "Move file to desktop" |
+| `CODE_GENERATION` | deepseek-coder:7b-q4_0 | "Write a REST endpoint in FastAPI" |
+| `GENERAL_KNOWLEDGE` | mistral:7b-instruct-q4_0 (streamed) | "Explain Docker networking" |
+| `DEV_TASK` | mistral:7b-instruct-q4_0 | "Push my code to GitHub" |
 | `VISION_TASK` | llava:7b | "What's on my screen?" |
-| `PROJECT_CONTEXT` | llama3.2:1b | "What routes does my project have?" |
-| `REALTIME_QUERY` | llama3.2:1b | "What's the latest Node.js version?" |
+| `PROJECT_CONTEXT` | mistral:7b-instruct-q4_0 | "What routes does my project have?" |
+| `REALTIME_QUERY` | mistral:7b-instruct-q4_0 | "What's the latest Node.js version?" |
+| `DEACTIVATE_SESSION` | Session controller | "Go to sleep", "That's all" |
 
 ---
 
@@ -132,7 +136,7 @@ Wake ("Hey Jarvis") → Command Extraction → Regex Intent (0ms) → Execute / 
 ```
 ┌─────────────────────────────────────────────────────┐
 │                    INPUT LAYER                       │
-│    CLI · "Hey Jarvis" (Whisper) · CTRL+SPACE        │
+│    CLI · "Hey Kommy" (Whisper) · CTRL+SPACE         │
 ├─────────────────────────────────────────────────────┤
 │               VOICE PIPELINE (Phase 2)              │
 │  VAD → Wake Word → Whisper STT → Intent Router     │
@@ -140,11 +144,12 @@ Wake ("Hey Jarvis") → Command Extraction → Regex Intent (0ms) → Execute / 
 │                 REASONING LAYER                      │
 │   OllamaClient (6 local models) · Intent Classifier │
 ├─────────────────────────────────────────────────────┤
-│                 SECURITY LAYER                       │
-│    Sandbox · Policy · Permissions · Audit Chain      │
+│                 SAFETY LAYER                         │
+│  SafetyGate · Voice Confirmation · Audit Chain      │
 ├─────────────────────────────────────────────────────┤
 │                EXECUTION LAYER                       │
-│   Isolated Worker Process · Plugin Registry · IPC    │
+│  SystemExecutor · ShellExecutor · SystemMonitor     │
+│  CommandPlan → Executor Dispatch → Result           │
 ├─────────────────────────────────────────────────────┤
 │                  PLUGIN LAYER                        │
 │  System · Git · Docker · Browser · Gmail · Spotify   │
@@ -159,12 +164,12 @@ Wake ("Hey Jarvis") → Command Extraction → Regex Intent (0ms) → Execute / 
 
 | Tier | Engine | How it works |
 |---|---|---|
-| **1 (default)** | Whisper keyword spotting | VAD detects speech → records 1.5s → Whisper transcribes → matches "Hey Jarvis" + extracts command |
+| **1 (default)** | Whisper keyword spotting | VAD detects speech → records 1.5s → Whisper transcribes → matches "Hey Kommy" + extracts command |
 | **2** | openwakeword | Lightweight ONNX model (auto-fallback if Whisper unavailable) |
 | **3** | CTRL+SPACE | Keyboard hotkey — always works alongside any voice tier |
 
 **Performance optimizations:**
-- **Single-shot wake + command** — "Hey Jarvis, what is Python?" is captured in one recording, no second prompt
+- **Single-shot wake + command** — "Hey Kommy, what is Python?" is captured in one recording, no second prompt
 - **Regex-only intent classification** — 0ms classification, no LLM round-trip
 - **Streaming LLM responses** — TTS speaks the first sentence while the model is still generating
 - **Model pre-warming** — primary model is loaded into RAM at startup for instant inference
@@ -172,10 +177,12 @@ Wake ("Hey Jarvis") → Command Extraction → Regex Intent (0ms) → Execute / 
 
 **Key design decisions:**
 - The main process **never imports plugin code** — plugins run in isolated worker subprocesses over JSON IPC
-- **EventBus** connects all modules via 18 typed events — no direct coupling
+- **SafetyGate** enforces voice confirmation for destructive ops (shutdown, kill, delete) with timeout-based denial
+- **EventBus** connects all modules via typed events — no direct coupling
 - **ModeMonitor** detects online/offline and switches TTS engines automatically
 - **TTS failover chain:** Edge TTS (online) → Piper (offline) → pyttsx3 (fallback)
 - **Wake word shares the Whisper model** with STT — zero additional memory cost
+- **Typed schemas** — `IntentObject`, `CommandPlan`, `ExecutionResult` enforce contracts between layers
 - All config is centralized in `config.yaml` — no hardcoded values in source
 
 ---
@@ -198,11 +205,12 @@ pip install -r requirements.txt
 ### Pull the Ollama models
 
 ```bash
-ollama pull llama3.2:1b            # Primary (fast voice responses)
-ollama pull llama3.2:3b            # Reasoning fallback
-ollama pull deepseek-coder:6.7b    # Code generation
-ollama pull llava:7b               # Vision (Phase 4)
-ollama pull nomic-embed-text:latest # Embeddings (Phase 6)
+ollama pull llama3.2:3b-q4_0          # Fast voice responses
+ollama pull mistral:7b-instruct-q4_0  # General reasoning (primary)
+ollama pull llama3:8b-q4_0            # Complex reasoning fallback
+ollama pull deepseek-coder:7b-q4_0    # Code generation
+ollama pull llava:7b                  # Vision (Phase 4)
+ollama pull nomic-embed-text          # Embeddings (Phase 6)
 ```
 
 If your models are stored in a custom location (e.g., `D:\ollama\models`):
@@ -222,11 +230,11 @@ python -m aura
 python -m aura --yes "cpu"
 ```
 
-Say **"Hey Jarvis"** to activate voice input, or press **CTRL+SPACE** as a manual fallback. Speak your command and AURA responds.
+Say **"Hey Kommy"** to activate voice input, or press **CTRL+SPACE** as a manual fallback. Speak your command and AURA responds.
 
 ### Quick Reference
 
-**Voice commands** (say "Hey Jarvis" then speak naturally):
+**Voice commands** (say "Hey Kommy" then speak naturally):
 
 | Category | Voice Examples |
 |---|---|
@@ -257,16 +265,27 @@ AURA/
 │   │   ├── config_loader.py    # YAML config with strict validation
 │   │   ├── ollama_client.py    # Ollama API client with streaming
 │   │   ├── intent_router.py    # Regex-based intent classification
-│   │   ├── voice_executor.py   # Direct system command execution
+│   │   ├── command_engine.py   # Intent → CommandPlan → Executor dispatch
+│   │   ├── safety_gate.py      # Voice confirmation for destructive ops
+│   │   ├── voice_executor.py   # Direct system command execution (legacy)
+│   │   ├── event_bus.py        # Singleton pub/sub event system
+│   │   ├── session_controller.py # Session lifecycle (active/sleep/wake)
 │   │   ├── errors.py           # Custom exception hierarchy
 │   │   └── ...
+│   ├── executors/
+│   │   ├── system_executor.py  # OS-level: open/close apps, volume, shutdown
+│   │   ├── shell_executor.py   # Allowlisted shell commands (git, npm, docker)
+│   │   └── system_monitor.py   # CPU, RAM, battery, disk, processes
+│   ├── schemas/
+│   │   ├── intent.py           # IntentObject, IntentType enum
+│   │   └── command.py          # CommandPlan, ExecutionResult, ExecutorType
 │   ├── modules/
 │   │   ├── stt.py              # Whisper speech-to-text engine
 │   │   ├── tts.py              # Multi-engine text-to-speech
 │   │   └── wake_word.py        # Whisper-based wake word + CTRL+SPACE
 │   ├── utils/
+│   │   ├── app_registry.py     # Application name → executable resolution
 │   │   ├── audio_input.py      # Microphone device resolution
-│   │   ├── event_bus.py        # Singleton pub/sub with 18 event types
 │   │   └── mode_monitor.py     # Online/offline detection daemon
 │   ├── security/               # Sandbox, audit, policy enforcement
 │   └── runtime/                # Execution engine, planner, worker IPC
@@ -284,6 +303,7 @@ AURA/
 ├── tests/
 │   ├── test_phase2_audit_part1.py  # EventBus, ModeMonitor, Ollama, Router
 │   ├── test_phase2_audit_part2.py  # STT, WakeWord, TTS, Config, Safety
+│   ├── test_system_executor.py     # SystemExecutor, ShellExecutor, SafetyGate
 │   └── fixtures/               # Test audio files, bad config
 ├── scripts/                    # Diagnostic and integration test scripts
 ├── config.yaml                 # Central configuration
@@ -306,6 +326,8 @@ The adversarial audit suite covers every module with both happy-path and edge-ca
 | STTEngine (happy + adversarial) | 13 | All pass |
 | WakeWordListener (happy + adversarial) | 11 | All pass |
 | TTSEngine (happy + adversarial) | 9 | All pass |
+| SystemExecutor + ShellExecutor | — | In progress |
+| SafetyGate | — | In progress |
 | Config validation | 2 | All pass |
 | Safety (static analysis) | 5 | All pass |
 | Pipeline E2E | 1 | All pass |
@@ -321,7 +343,7 @@ The adversarial audit suite covers every module with both happy-path and edge-ca
 |---|---|---|
 | **Phase 0 — Core Infrastructure** | Event bus, config, registry, CLI, execution backbone | Done |
 | **Phase 1 — System Plugin** | File/process/npm operations, sandbox, permissions, audit chain | Done |
-| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification | Done |
+| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification, executors, safety gate | Done |
 | **Phase 3 — Dev Tools** | Git automation, Docker lifecycle, browser automation | Next |
 | **Phase 4 — Vision** | Screen capture, OCR, visual reasoning with LLaVA | Planned |
 | **Phase 5 — GUI Dashboard** | PyQt6 desktop interface with live command log | Planned |

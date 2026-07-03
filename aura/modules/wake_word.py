@@ -67,7 +67,7 @@ class WakeWordListener:
         _get = lambda key, default: ww.get(key, default) if isinstance(ww, dict) else getattr(ww, key, default)
 
         self._engine = _get("engine", "whisper")
-        self._phrases: list[str] = _get("phrases", ["hey aura", "aura"])
+        self._phrases: list[str] = _get("phrases", ["hey kommy", "kommy"])
         self._listen_duration: float = float(_get("listen_duration", 2.0))
         self._vad_threshold: float = float(_get("vad_threshold", 0.008))
         self._vad_pre_frames: int = int(_get("vad_pre_frames", 3))
@@ -86,10 +86,10 @@ class WakeWordListener:
         # Precompile phrase patterns + common Whisper mishearings
         self._phrase_patterns = [re.compile(re.escape(p), re.IGNORECASE) for p in self._phrases]
         self._fuzzy_alts = [
-            "hey aura", "aura", "hey ora", "hey laura",
-            "hey orra", "a aura", "hey aora", "hey ara",
-            "yeah aura", "he aura", "hay aura",
-            "hey aurora", "hey auro", "hey auras",
+            "hey kommy", "kommy", "hey commie", "heykami",
+            "hey comi", "hey commy", "a kommy", "hey komi",
+            "yeah kommy", "he kommy", "hay kommy",
+            "hey comic", "hey tommy", "hey connie",
         ]
 
         # Whisper model reference (set by main.py before start)
@@ -276,7 +276,7 @@ class WakeWordListener:
             result = self._whisper_model.transcribe(
                 audio, fp16=False, language="en",
                 no_speech_threshold=0.3,
-                initial_prompt="Hey AURA.",
+                initial_prompt="Hey Kommy.",
             )
             return result.get("text", "").strip().lower()
         except Exception as exc:
@@ -375,9 +375,9 @@ class WakeWordListener:
     def _strip_wake_phrase(self, text: str) -> str:
         """Remove the wake phrase from the transcript to extract the command.
 
-        'hey aura what is python' → 'what is python'
-        'aura open chrome'        → 'open chrome'
-        'hey aura'                → ''
+        'hey kommy what is python' → 'what is python'
+        'kommy open chrome'        → 'open chrome'
+        'hey kommy'                → ''
         """
         t = text.lower().strip()
         for phrase in sorted(self._phrases, key=len, reverse=True):

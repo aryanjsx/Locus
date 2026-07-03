@@ -55,7 +55,7 @@ class IntentObject:
 
 # Exact system prompt per spec — do NOT modify
 ROUTER_CLASSIFY_V1_PROMPT = """\
-You are AURA's intent classifier. Classify the user's command.
+You are Kommy's intent classifier. Classify the user's command.
 
 Return ONLY valid JSON. No explanation. No markdown. No preamble.
 
