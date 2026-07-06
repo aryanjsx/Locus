@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 from aura.core.config_loader import get as get_config
 from aura.core.errors import ConfirmationDenied, ConfirmationTimeout
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.core.tracing import current_trace_id
 
 logger = logging.getLogger("aura.safety_gate")
@@ -160,7 +160,7 @@ class SafetyGate:
         """Block until the user confirms or the gate cancels (CLI / registry path)."""
         trace_id = trace_id or current_trace_id()
         self._bus.emit(
-            "confirmation.requested",
+            EventType.SAFETY_CONFIRMATION_REQ,
             {
                 "action": action,
                 "source": source,
@@ -180,8 +180,8 @@ class SafetyGate:
 
         if raw is None:
             self._bus.emit(
-                "confirmation.timeout",
-                {"action": action, "source": source, "trace_id": trace_id},
+                EventType.SAFETY_DENIED,
+                {"action": action, "source": source, "trace_id": trace_id, "reason": "timeout"},
             )
             raise ConfirmationTimeout(
                 f"No confirmation for '{action}' within {self._timeout:.0f}s — cancelled."
@@ -190,7 +190,7 @@ class SafetyGate:
         response = raw.strip().lower()
         if response in ACCEPTED_RESPONSES:
             self._bus.emit(
-                "confirmation.accepted",
+                EventType.SAFETY_CONFIRMED,
                 {
                     "action": action,
                     "source": source,
@@ -201,7 +201,7 @@ class SafetyGate:
             return
 
         self._bus.emit(
-            "confirmation.denied",
+            EventType.SAFETY_DENIED,
             {
                 "action": action,
                 "source": source,

@@ -38,9 +38,12 @@ def mock_ollama_client():
 
 @pytest.fixture(autouse=True)
 def _reset_bus():
-    original = dict(bus._subscribers)
+    original_handlers = dict(bus._handlers)
+    original_wildcard = list(bus._wildcard_handlers)
     yield
-    bus._subscribers = original
+    bus._handlers.clear()
+    bus._handlers.update(original_handlers)
+    bus._wildcard_handlers[:] = original_wildcard
 
 
 # ═══════════════════════════════════════════════════════════
@@ -51,7 +54,7 @@ class TestEventBusHappyPath:
 
     def test_subscribe_and_emit_basic(self):
         received = []
-        handler = lambda p: received.append(p.data)
+        handler = lambda p: received.append(p)
         bus.subscribe(EventType.MODE_CHANGED, handler)
         bus.emit(EventType.MODE_CHANGED, {"mode": "ONLINE"})
         assert len(received) == 1
@@ -60,7 +63,7 @@ class TestEventBusHappyPath:
 
     def test_multiple_subscribers_all_receive(self):
         results = [[], [], []]
-        handlers = [lambda p, i=i: results[i].append(p.data) for i in range(3)]
+        handlers = [lambda p, i=i: results[i].append(p) for i in range(3)]
         for h in handlers:
             bus.subscribe(EventType.SYSTEM_ERROR, h)
         bus.emit(EventType.SYSTEM_ERROR, {"error": "test"})
@@ -70,14 +73,14 @@ class TestEventBusHappyPath:
         for h in handlers:
             bus.unsubscribe(EventType.SYSTEM_ERROR, h)
 
-    def test_payload_has_timestamp(self):
-        from datetime import datetime
+    def test_payload_is_dict(self):
         received = []
         handler = lambda p: received.append(p)
         bus.subscribe(EventType.WAKE_WORD_DETECTED, handler)
-        bus.emit(EventType.WAKE_WORD_DETECTED, {})
-        assert hasattr(received[0], "timestamp")
-        assert isinstance(received[0].timestamp, datetime)
+        bus.emit(EventType.WAKE_WORD_DETECTED, {"source": "whisper"})
+        assert len(received) == 1
+        assert isinstance(received[0], dict)
+        assert received[0]["source"] == "whisper"
         bus.unsubscribe(EventType.WAKE_WORD_DETECTED, handler)
 
     def test_unsubscribe_stops_delivery(self):
@@ -147,14 +150,12 @@ class TestEventBusAdversarial:
 
         def handler(p):
             with lock:
-                results.append(p.data.get("val"))
+                results.append(p.get("val"))
 
         bus.subscribe(EventType.EXECUTION_COMPLETE, handler)
         threads = [
             threading.Thread(
-                target=bus.emit,
-                args=(EventType.EXECUTION_COMPLETE,),
-                kwargs={"data": {"val": i}},
+                target=lambda i=i: bus.emit(EventType.EXECUTION_COMPLETE, {"val": i}),
             )
             for i in range(50)
         ]
@@ -169,8 +170,10 @@ class TestEventBusAdversarial:
         big = {"data": "x" * 100_000, "nested": {"a": list(range(1000))}}
         bus.emit(EventType.LLM_RESPONSE_RECEIVED, big)
 
-    def test_emit_unknown_event_type_string_does_not_crash(self):
-        bus.emit("TOTALLY_FAKE_EVENT", {"x": 1})
+    def test_emit_unknown_event_type_string_raises_type_error(self):
+        import pytest
+        with pytest.raises(TypeError, match="raw string"):
+            bus.emit("TOTALLY_FAKE_EVENT", {"x": 1})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -190,7 +193,7 @@ class TestModeMonitorHappyPath:
     def test_emits_mode_changed_on_start(self):
         from aura.utils.mode_monitor import ModeMonitor
         events = []
-        handler = lambda p: events.append(p.data["mode"])
+        handler = lambda p: events.append(p["mode"])
         bus.subscribe(EventType.MODE_CHANGED, handler)
         m = ModeMonitor()
         m.start()
@@ -251,7 +254,7 @@ class TestModeMonitorAdversarial:
     def test_mode_changes_from_online_to_offline(self):
         from aura.utils.mode_monitor import ModeMonitor
         events = []
-        handler = lambda p: events.append(p.data["mode"])
+        handler = lambda p: events.append(p["mode"])
         bus.subscribe(EventType.MODE_CHANGED, handler)
 
         call_count = {"n": 0}

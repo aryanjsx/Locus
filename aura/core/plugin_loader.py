@@ -30,7 +30,7 @@ from aura.security.audit_events import (
     get_audit_event_registry,
 )
 from aura.core.errors import PluginError
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.runtime.execution_engine import ExecutionEngine
 from aura.security.permissions import PermissionLevel
 from aura.core.plugin_base import IntentParser, Plugin
@@ -197,7 +197,7 @@ class PluginLoader:
             self._loaded[plugin_name] = loaded
 
         self._bus.emit(
-            "plugin.loaded",
+            EventType.PLUGIN_LOADED,
             {
                 "name": plugin_name,
                 "actions": actions,

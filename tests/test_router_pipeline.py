@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 from aura.runtime.command_registry import CommandRegistry
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.runtime.execution_engine import ExecutionEngine
 from aura.security.permissions import PermissionLevel, PermissionValidator
 from aura.security.plugin_manifest import PluginManifest
@@ -107,8 +107,8 @@ def test_rate_limit_surfaces_error_code():
 def test_trace_id_present_in_events():
     router, bus = _build()
     trace_ids: list[str] = []
-    bus.subscribe("command.completed",
-                  lambda env: trace_ids.append(env["payload"].get("trace_id")))
+    bus.subscribe(EventType.COMMAND_COMPLETED,
+                  lambda payload: trace_ids.append(payload.get("trace_id")))
     router.route("cpu", source="cli")
     assert trace_ids
     assert all(isinstance(t, str) and len(t) == 12 for t in trace_ids)

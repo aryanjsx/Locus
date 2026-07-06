@@ -23,7 +23,7 @@ from aura.runtime.command_registry import (
     assert_safe_closures,
 )
 from aura.core.errors import RegistryError, SchemaError
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.runtime.execution_engine import ExecutionEngine
 from aura.core.intent import Intent
 from aura.security.permissions import PermissionLevel
@@ -307,15 +307,15 @@ def test_registry_emits_audit_events_on_every_execution():
     )
 
     events: list[str] = []
-    bus.subscribe("command.executing", lambda env: events.append(env["event"]))
-    bus.subscribe("command.completed", lambda env: events.append(env["event"]))
+    bus.subscribe(EventType.COMMAND_EXECUTING, lambda payload: events.append("COMMAND_EXECUTING"))
+    bus.subscribe(EventType.COMMAND_COMPLETED, lambda payload: events.append("COMMAND_COMPLETED"))
 
     registry.execute(
         CommandSpec(action="audit.probe", params={}, requires_confirm=False),
         source="cli",
     )
-    assert "command.executing" in events
-    assert "command.completed" in events
+    assert "COMMAND_EXECUTING" in events
+    assert "COMMAND_COMPLETED" in events
 
 
 def test_destructive_execution_emits_destructive_event():
@@ -354,8 +354,8 @@ def test_destructive_execution_emits_destructive_event():
 
     destructive: list[str] = []
     bus.subscribe(
-        "command.destructive",
-        lambda env: destructive.append(env["payload"].get("action")),
+        EventType.COMMAND_DESTRUCTIVE,
+        lambda payload: destructive.append(payload.get("action")),
     )
     registry.execute(
         CommandSpec(action="audit.destructive", params={},

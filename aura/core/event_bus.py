@@ -41,6 +41,45 @@ class EventType(Enum):
     INACTIVITY_TIMEOUT      = auto()
     LISTEN_NOW              = auto()
 
+    # Command lifecycle
+    COMMAND_RECEIVED        = auto()
+    COMMAND_EXECUTING       = auto()
+    COMMAND_COMPLETED       = auto()
+    COMMAND_ERROR           = auto()
+    COMMAND_DESTRUCTIVE     = auto()
+    COMMAND_AUTO_CONFIRMED  = auto()
+
+    # Intent parsing (router layer)
+    INTENT_PARSED           = auto()
+
+    # Validation / security gate
+    PERMISSION_DENIED       = auto()
+    RATE_LIMIT_BLOCKED      = auto()
+    POLICY_BLOCKED          = auto()
+    SANDBOX_BLOCKED         = auto()
+    SCHEMA_REJECTED         = auto()
+
+    # Plan lifecycle
+    PLAN_STARTED            = auto()
+    PLAN_COMPLETED          = auto()
+    PLAN_FAILED             = auto()
+    PLAN_ROLLBACK           = auto()
+    PLAN_STEP_STARTED       = auto()
+    PLAN_STEP_COMPLETED     = auto()
+
+    # Registry / worker lifecycle
+    REGISTRY_REGISTERED     = auto()
+    REGISTRY_UNREGISTERED   = auto()
+    WORKER_READY            = auto()
+    WORKER_CRASHED          = auto()
+    WORKER_SHUTDOWN         = auto()
+
+    # Plugin loading
+    PLUGIN_LOADED           = auto()
+
+    # Audit
+    AUDIT_CHAIN_BREAK       = auto()
+
     # System state
     MODE_CHANGED            = auto()
     SYSTEM_ERROR            = auto()
@@ -49,6 +88,17 @@ class EventType(Enum):
 
 # Type alias — all payloads are plain dicts
 EventPayload = dict[str, Any]
+
+
+def _event_name(event_type: EventType) -> str:
+    """Extract the .name from an EventType, or raise TypeError for raw strings."""
+    if isinstance(event_type, str):
+        raise TypeError(
+            f"EventBus received a raw string {event_type!r} where an "
+            f"EventType enum member was expected. Fix the caller to "
+            f"pass EventType.<MEMBER> instead of a string literal."
+        )
+    return event_type.name
 
 
 class EventBus:
@@ -70,9 +120,10 @@ class EventBus:
                 self._wildcard_handlers.append(handler)
                 logger.debug(f"Subscribed {handler.__qualname__} to WILDCARD")
         else:
+            name = _event_name(event_type)
             if handler not in self._handlers[event_type]:
                 self._handlers[event_type].append(handler)
-                logger.debug(f"Subscribed {handler.__qualname__} to {event_type.name}")
+                logger.debug(f"Subscribed {handler.__qualname__} to {name}")
 
     def unsubscribe(self, event_type: EventType | str, handler: Callable) -> None:
         """Remove a handler from an event type."""
@@ -92,22 +143,23 @@ class EventBus:
         Emit an event. Calls all registered handlers synchronously.
         Exceptions in handlers are caught and logged — they never crash the emitter.
         """
+        name = _event_name(event_type)
         payload = payload or {}
         for handler in list(self._handlers[event_type]):
             try:
                 handler(payload)
             except Exception as exc:
                 logger.error(
-                    f"Handler {handler.__qualname__} raised on {event_type.name}: {exc}",
+                    f"Handler {handler.__qualname__} raised on {name}: {exc}",
                     exc_info=True,
                 )
-        envelope = {"event": event_type.name, "payload": payload}
+        envelope = {"event": name, "payload": payload}
         for handler in list(self._wildcard_handlers):
             try:
                 handler(envelope)
             except Exception as exc:
                 logger.error(
-                    f"Wildcard handler {handler.__qualname__} raised on {event_type.name}: {exc}",
+                    f"Wildcard handler {handler.__qualname__} raised on {name}: {exc}",
                     exc_info=True,
                 )
 

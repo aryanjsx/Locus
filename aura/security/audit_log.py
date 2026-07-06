@@ -284,8 +284,6 @@ class _ChainedAuditFormatter(logging.Formatter):
 class AuditLogger:
     """Subscribes to security events on the bus and writes them to disk."""
 
-    _SUBSCRIBED_FLAG = "_aura_audit_subscribed"
-
     def __init__(
         self,
         bus: EventBus,
@@ -338,7 +336,7 @@ class AuditLogger:
         handler._aura_audit = True  # type: ignore[attr-defined]
         self._logger.addHandler(handler)
 
-        self._tokens: list[str] = []
+        self._subscribed = False
         self._path = target
 
     @property
@@ -350,27 +348,19 @@ class AuditLogger:
         return fm.current_hash if isinstance(fm, _ChainedAuditFormatter) else None
 
     def subscribe(self) -> None:
-        """Subscribe to every currently-registered audit event.
+        """Subscribe to the bus WILDCARD to log all events.
 
-        Safe to call multiple times: events newly registered between
-        calls will get subscribers added on the next call, so plugins
-        loaded after boot still get coverage if `subscribe()` is
-        re-invoked after `PluginLoader.load_all()`.
+        Safe to call multiple times — idempotent.
         """
-        if not getattr(self._bus, self._SUBSCRIBED_FLAG, False):
-            setattr(self._bus, self._SUBSCRIBED_FLAG, set())
-        already: set[str] = getattr(self._bus, self._SUBSCRIBED_FLAG)
-        for event in self._event_registry.events():
-            if event in already:
-                continue
-            token = self._bus.subscribe(event, self._handle)
-            self._tokens.append(token)
-            already.add(event)
+        if getattr(self, "_subscribed", False):
+            return
+        self._bus.subscribe(EventBus.WILDCARD, self._handle)
+        self._subscribed = True
 
     def unsubscribe(self) -> None:
-        for token in self._tokens:
-            self._bus.unsubscribe(token)
-        self._tokens.clear()
+        if getattr(self, "_subscribed", False):
+            self._bus.unsubscribe(EventBus.WILDCARD, self._handle)
+            self._subscribed = False
 
     def _handle(self, envelope: dict[str, Any]) -> None:
         event_name = envelope.get("event") or "audit"

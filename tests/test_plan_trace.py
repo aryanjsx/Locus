@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from aura.runtime.command_registry import CommandRegistry
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.runtime.execution_engine import ExecutionEngine
 from aura.security.permissions import PermissionLevel
 from aura.runtime.planner import TaskExecutor, TaskPlan, TaskStep
@@ -50,19 +50,19 @@ def test_plan_steps_share_single_trace_id() -> None:
     plan_trace_ids: list[str] = []
     step_trace_ids: list[str] = []
 
-    def on_plan_started(envelope: dict) -> None:
-        tid = (envelope.get("payload") or {}).get("trace_id")
+    def on_plan_started(payload: dict) -> None:
+        tid = payload.get("trace_id")
         if tid:
             plan_trace_ids.append(tid)
 
-    def on_step(envelope: dict) -> None:
-        tid = (envelope.get("payload") or {}).get("trace_id")
+    def on_step(payload: dict) -> None:
+        tid = payload.get("trace_id")
         if tid:
             step_trace_ids.append(tid)
 
-    bus.subscribe("plan.started", on_plan_started)
-    bus.subscribe("plan.step.started", on_step)
-    bus.subscribe("plan.step.completed", on_step)
+    bus.subscribe(EventType.PLAN_STARTED, on_plan_started)
+    bus.subscribe(EventType.PLAN_STEP_STARTED, on_step)
+    bus.subscribe(EventType.PLAN_STEP_COMPLETED, on_step)
 
     plan = TaskPlan(
         description="two-step demo",

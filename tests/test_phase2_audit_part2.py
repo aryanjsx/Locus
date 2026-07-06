@@ -43,9 +43,12 @@ def speech_audio():
 
 @pytest.fixture(autouse=True)
 def _reset_bus():
-    original = dict(bus._subscribers)
+    original_handlers = dict(bus._handlers)
+    original_wildcard = list(bus._wildcard_handlers)
     yield
-    bus._subscribers = original
+    bus._handlers.clear()
+    bus._handlers.update(original_handlers)
+    bus._wildcard_handlers[:] = original_wildcard
 
 
 # ═══════════════════════════════════════════════════════════
@@ -261,7 +264,7 @@ class TestWakeWordListenerHappyPath:
         from aura.modules.wake_word import WakeWordListener
         listener = WakeWordListener(config)
         events = []
-        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: events.append(p.data))
+        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: events.append(p))
         listener._emit_detected("openwakeword")
         assert len(events) == 1
         assert events[0]["source"] == "openwakeword"
@@ -273,7 +276,7 @@ class TestWakeWordListenerHappyPath:
         from aura.modules.wake_word import WakeWordListener
         listener = WakeWordListener(config)
         events = []
-        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: events.append(p.data))
+        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: events.append(p))
         listener._emit_detected("openwakeword")
         ts = events[0]["timestamp"]
         parsed = datetime.fromisoformat(ts)
@@ -288,7 +291,7 @@ class TestWakeWordListenerHappyPath:
         def _capture_hotkey(_combo, callback):
             hotkey_callbacks.append(callback)
 
-        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: detections.append(p.data))
+        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: detections.append(p))
         with patch.dict(os.environ, {"PICOVOICE_ACCESS_KEY": ""}, clear=False):
             with patch("openwakeword.model.Model", side_effect=Exception("no oww")):
                 with patch("keyboard.add_hotkey", side_effect=_capture_hotkey):
@@ -309,7 +312,7 @@ class TestWakeWordListenerAdversarial:
         """If openwakeword is not installed, falls back to keyboard without crash"""
         from aura.modules.wake_word import WakeWordListener
         errors = []
-        bus.subscribe(EventType.SYSTEM_ERROR, lambda p: errors.append(p.data))
+        bus.subscribe(EventType.SYSTEM_ERROR, lambda p: errors.append(p))
         with patch("openwakeword.model.Model", side_effect=ImportError("not installed")):
             listener = WakeWordListener(config)
             listener.start()
@@ -325,7 +328,7 @@ class TestWakeWordListenerAdversarial:
         from aura.modules.wake_word import WakeWordListener
 
         errors = []
-        bus.subscribe(EventType.SYSTEM_ERROR, lambda p: errors.append(p.data))
+        bus.subscribe(EventType.SYSTEM_ERROR, lambda p: errors.append(p))
         mock_model = MagicMock()
         mock_model.predict.return_value = {"hey_jarvis": 0.0}
         with patch("openwakeword.model.Model", return_value=mock_model):
@@ -571,7 +574,8 @@ class TestSafetyAudit:
                 path = os.path.join(root, fname)
                 with open(path, encoding="utf-8") as f:
                     for lineno, line in enumerate(f, 1):
-                        if re.search(r"shell\s*=\s*True", line):
+                        stripped = line.split("#")[0]
+                        if re.search(r"shell\s*=\s*True", stripped):
                             violations.append(f"{path}:{lineno}: {line.strip()}")
         assert not violations, "shell=True found:\n" + "\n".join(violations)
 

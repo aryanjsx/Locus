@@ -11,12 +11,12 @@ import json
 from pathlib import Path
 
 from aura.security.audit_log import AuditLogger, verify_chain, verify_chain_dir
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 
 
 def _write_many(bus: EventBus, count: int) -> None:
     for i in range(count):
-        bus.emit("command.executing", {"action": "probe", "i": i})
+        bus.emit(EventType.COMMAND_EXECUTING, {"action": "probe", "i": i})
 
 
 def test_verify_chain_dir_handles_no_rotation(tmp_path: Path):

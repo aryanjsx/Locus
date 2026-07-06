@@ -29,7 +29,7 @@ from typing import Any
 from aura.runtime.command_registry import CommandRegistry
 from aura.core.error_handler import handle_error
 from aura.core.errors import RegistryError, SchemaError
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.core.intent import Intent
 from aura.core.logger import benchmark, get_logger, trace
 from aura.security.permissions import PermissionValidator
@@ -83,7 +83,7 @@ class Router:
             source=source,
         ):
             self._bus.emit(
-                "command.received",
+                EventType.COMMAND_RECEIVED,
                 {"text": text, "source": source, "trace_id": scope.trace_id},
             )
 
@@ -101,7 +101,7 @@ class Router:
                       action=intent.action, args=intent.args,
                       trace_id=scope.trace_id)
                 self._bus.emit(
-                    "intent.parsed",
+                    EventType.INTENT_PARSED,
                     {
                         "action": intent.action,
                         "args": intent.args,

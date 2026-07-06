@@ -6,7 +6,7 @@ import time
 import pytest
 
 from aura.core.errors import ConfirmationDenied, ConfirmationTimeout
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.security.safety_gate import SafetyGate
 
 
@@ -58,7 +58,7 @@ def test_timeout_cancels_execution():
 def test_events_emitted_in_bus():
     events: list[str] = []
     gate, bus = _gate(["yes"])
-    bus.subscribe("*", lambda env: events.append(env["event"]))
+    bus.subscribe(EventBus.WILDCARD, lambda env: events.append(env["event"]))
     gate.request(action="dangerous", params={}, source="cli", permission="HIGH")
-    assert "confirmation.requested" in events
-    assert "confirmation.accepted" in events
+    assert "SAFETY_CONFIRMATION_REQ" in events
+    assert "SAFETY_CONFIRMED" in events

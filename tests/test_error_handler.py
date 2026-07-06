@@ -18,7 +18,7 @@ from aura.core.errors import (
     SandboxError,
     SchemaError,
 )
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 
 
 def test_classification_table_is_exhaustive() -> None:
@@ -69,7 +69,7 @@ def test_handle_error_preserves_chained_cause_classification() -> None:
 def test_handle_error_emits_bus_event() -> None:
     bus = EventBus()
     received: list[dict] = []
-    bus.subscribe("command.error", lambda e: received.append(e["payload"]))
+    bus.subscribe(EventType.COMMAND_ERROR, lambda e: received.append(e))
     handle_error(RegistryError("oops"), bus=bus, context={"action": "x"})
     assert received
     assert received[0]["error_code"] == "UNKNOWN_COMMAND"
@@ -85,10 +85,9 @@ def test_handle_error_injects_active_trace_id() -> None:
 
 
 def test_handle_error_never_raises_on_recursive_bus_failure() -> None:
-    """A throwing subscriber on `command.error` must not propagate."""
+    """A throwing subscriber on COMMAND_ERROR must not propagate."""
     bus = EventBus()
-    bus.subscribe("command.error", lambda _: (_ for _ in ()).throw(RuntimeError("x")))
-    # Must not raise.
+    bus.subscribe(EventType.COMMAND_ERROR, lambda _: (_ for _ in ()).throw(RuntimeError("x")))
     handle_error(PolicyError("contained"), bus=bus)
 
 
@@ -100,5 +99,5 @@ def test_install_default_subscribers_logs_errors(caplog) -> None:
     logger.setLevel(logging.ERROR)
     install_default_subscribers(bus, logger)
     caplog.set_level(logging.ERROR, logger="aura.error-handler-test")
-    bus.emit("command.error", {"error_code": "X", "action": "a"})
+    bus.emit(EventType.COMMAND_ERROR, {"error_code": "X", "action": "a"})
     assert any("X" in r.getMessage() for r in caplog.records)

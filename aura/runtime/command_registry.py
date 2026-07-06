@@ -62,7 +62,7 @@ from aura.core.errors import (
     RegistryError,
     SchemaError,
 )
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.core.param_schema import validate_params
 from aura.security.permissions import PermissionLevel, PermissionValidator
 from aura.security.plugin_manifest import PluginManifest, PluginManifestError
@@ -437,7 +437,7 @@ def _apply_safety_inline(
         return spec
     if auto_confirm:
         bus.emit(
-            "command.auto_confirmed",
+            EventType.COMMAND_AUTO_CONFIRMED,
             {
                 "action": spec.action,
                 "source": source,
@@ -723,7 +723,7 @@ class CommandRegistry:
                 validate_params(entry.action, dict(spec.params))
             except SchemaError as exc:
                 bus_ref.emit(
-                    "schema.rejected",
+                    EventType.SCHEMA_REJECTED,
                     {
                         "action": entry.action,
                         "source": clean_source,
@@ -742,7 +742,7 @@ class CommandRegistry:
                 )
             except RateLimitError as exc:
                 bus_ref.emit(
-                    "rate_limit.blocked",
+                    EventType.RATE_LIMIT_BLOCKED,
                     {
                         "action": entry.action,
                         "source": clean_source,
@@ -761,7 +761,7 @@ class CommandRegistry:
                 )
             except PermissionDenied as exc:
                 bus_ref.emit(
-                    "permission.denied",
+                    EventType.PERMISSION_DENIED,
                     {
                         "action": entry.action,
                         "source": clean_source,
@@ -785,7 +785,7 @@ class CommandRegistry:
 
             # 5) Lifecycle: executing.
             bus_ref.emit(
-                "command.executing",
+                EventType.COMMAND_EXECUTING,
                 {
                     "action": entry.action,
                     "plugin": entry.plugin,
@@ -798,7 +798,7 @@ class CommandRegistry:
             )
             if entry.destructive:
                 bus_ref.emit(
-                    "command.destructive",
+                    EventType.COMMAND_DESTRUCTIVE,
                     {
                         "action": entry.action,
                         "source": clean_source,
@@ -861,7 +861,7 @@ class CommandRegistry:
 
             # 7) Completion lifecycle.
             bus_ref.emit(
-                "command.completed",
+                EventType.COMMAND_COMPLETED,
                 {
                     "action": entry.action,
                     "success": result.success,
@@ -978,7 +978,7 @@ class CommandRegistry:
             )
 
         self._bus.emit(
-            "registry.registered",
+            EventType.REGISTRY_REGISTERED,
             {
                 "action": entry.action,
                 "plugin": entry.plugin,
@@ -1011,7 +1011,7 @@ class CommandRegistry:
         with self._lock:
             removed = self._entries._mutate_pop(_ENTRIES_TOKEN, action)
         if removed is not None:
-            self._bus.emit("registry.unregistered", {"action": action})
+            self._bus.emit(EventType.REGISTRY_UNREGISTERED, {"action": action})
             return True
         return False
 

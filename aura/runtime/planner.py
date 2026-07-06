@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, List, Sequence
 
 from aura.core.errors import PlanError
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.core.logger import get_logger
 from aura.core.result import CommandResult
 from aura.core.tracing import TraceScope, current_trace_id
@@ -140,7 +140,7 @@ class TaskExecutor:
         plan_trace = current_trace_id()
 
         self._bus.emit(
-            "plan.started",
+            EventType.PLAN_STARTED,
             {
                 "description": plan.description,
                 "steps": [s.action for s in plan.steps],
@@ -156,7 +156,7 @@ class TaskExecutor:
 
         for step in plan.steps:
             self._bus.emit(
-                "plan.step.started",
+                EventType.PLAN_STEP_STARTED,
                 {"action": step.action, "trace_id": current_trace_id()},
             )
             try:
@@ -169,7 +169,7 @@ class TaskExecutor:
                 report.error = f"{type(exc).__name__}: {exc}"
                 self._rollback(completed_steps, report)
                 self._bus.emit(
-                    "plan.failed",
+                    EventType.PLAN_FAILED,
                     {
                         "description": plan.description,
                         "failed_at": step.action,
@@ -186,7 +186,7 @@ class TaskExecutor:
                 report.error = result.message
                 self._rollback(completed_steps, report)
                 self._bus.emit(
-                    "plan.failed",
+                    EventType.PLAN_FAILED,
                     {
                         "description": plan.description,
                         "failed_at": step.action,
@@ -199,12 +199,12 @@ class TaskExecutor:
             completed_steps.append(step)
             report.completed.append(step.action)
             self._bus.emit(
-                "plan.step.completed",
+                EventType.PLAN_STEP_COMPLETED,
                 {"action": step.action, "trace_id": current_trace_id()},
             )
 
         self._bus.emit(
-            "plan.completed",
+            EventType.PLAN_COMPLETED,
             {
                 "description": plan.description,
                 "completed": report.completed,
@@ -220,7 +220,7 @@ class TaskExecutor:
             if not step.rollback_action:
                 continue
             self._bus.emit(
-                "plan.rollback",
+                EventType.PLAN_ROLLBACK,
                 {
                     "action": step.rollback_action,
                     "of": step.action,

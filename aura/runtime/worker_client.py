@@ -38,7 +38,7 @@ from typing import Any, Protocol
 
 from aura.core.config_loader import get as get_config
 from aura.core.errors import EngineError
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.core.logger import get_logger
 from aura.security.plugin_manifest import manifest_sha256, default_manifest_path
 
@@ -183,7 +183,7 @@ class WorkerClient:
         self._actions = {a["action"]: a for a in ready.get("actions", [])}
         self._start_stderr_pump(proc)
         self._bus.emit(
-            "worker.ready",
+            EventType.WORKER_READY,
             {"pid": ready.get("pid"), "actions": list(self._actions.keys())},
         )
 
@@ -248,7 +248,7 @@ class WorkerClient:
                 proc.kill()
             except Exception:
                 pass
-        self._bus.emit("worker.shutdown", {})
+        self._bus.emit(EventType.WORKER_SHUTDOWN, {})
 
     # ---- read-only inspection (used by registry/router for routing) -----
     def has(self, action: str) -> bool:
@@ -360,7 +360,7 @@ class WorkerClient:
         # Event is declared in AuditEventRegistry; AuditLogger is
         # subscribed, so this flight-records the incident.
         self._bus.emit(
-            "worker.crashed",
+            EventType.WORKER_CRASHED,
             {
                 "reason": str(reason),
                 "stage": stage,

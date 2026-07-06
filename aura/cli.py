@@ -39,7 +39,7 @@ from aura.core.config_loader import get as get_config
 from aura.core.config_loader import load_config
 from aura.core.error_handler import handle_error, install_default_subscribers
 from aura.core.errors import AuraError
-from aura.core.event_bus import get_event_bus
+from aura.core.event_bus import EventType, get_event_bus
 from aura.core.io import InputSource, OutputSink, StdinInput, StdoutOutput
 from aura.core.logger import attach_event_bus_logger, get_logger
 from aura.security.permissions import PermissionLevel, PermissionValidator
@@ -141,7 +141,7 @@ def bootstrap(
         if _audit_path.exists() and _audit_path.stat().st_size > 0:
             ok, bad_line = verify_chain(_audit_path)
             if not ok:
-                bus.emit("audit.chain_break", {"path": str(_audit_path), "bad_line": bad_line})
+                bus.emit(EventType.AUDIT_CHAIN_BREAK, {"path": str(_audit_path), "bad_line": bad_line})
                 sys.stderr.write(
                     "[AURA] SECURITY WARNING: Audit log integrity check failed. "
                     "Log may have been tampered with. See logs/audit.log.\n"

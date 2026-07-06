@@ -24,7 +24,7 @@ import json
 from pathlib import Path
 
 
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.security.audit_log import (
     AuditLogger,
     _read_sidecar,
@@ -36,7 +36,7 @@ from aura.security.audit_log import (
 
 def _write_many(bus: EventBus, count: int) -> None:
     for i in range(count):
-        bus.emit("command.executing", {"action": "probe", "i": i})
+        bus.emit(EventType.COMMAND_EXECUTING, {"action": "probe", "i": i})
 
 
 def _rotated_files(tmp_path: Path) -> list[Path]:

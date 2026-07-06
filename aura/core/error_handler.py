@@ -29,7 +29,7 @@ from aura.core.errors import (
     SandboxError,
     SchemaError,
 )
-from aura.core.event_bus import EventBus
+from aura.core.event_bus import EventBus, EventType
 from aura.core.result import CommandResult
 from aura.core.tracing import current_trace_id
 
@@ -85,7 +85,7 @@ def handle_error(
     }
 
     if bus is not None:
-        bus.emit("command.error", payload)
+        bus.emit(EventType.COMMAND_ERROR, payload)
 
     return CommandResult(
         success=False,
@@ -98,16 +98,15 @@ def handle_error(
 
 def install_default_subscribers(bus: EventBus, logger: Any) -> None:
     """Subscribe the logger to error and subscriber-error channels."""
-    def _on_error(envelope: dict[str, Any]) -> None:
-        payload = envelope.get("payload", {}) or {}
+    def _on_error(payload: dict[str, Any]) -> None:
         logger.error(
             payload.get("error_code", "INTERNAL_ERROR"),
             extra={
-                "event": envelope.get("event", "command.error"),
+                "event": "COMMAND_ERROR",
                 "action": payload.get("action"),
                 "data": payload,
             },
         )
 
-    bus.subscribe("command.error", _on_error)
-    bus.subscribe(EventBus.SUBSCRIBER_ERROR, _on_error)
+    bus.subscribe(EventType.COMMAND_ERROR, _on_error)
+    bus.subscribe(EventType.SYSTEM_ERROR, _on_error)
