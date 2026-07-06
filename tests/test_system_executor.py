@@ -65,6 +65,10 @@ class TestSystemExecutor:
         assert result.success is False
         assert result.executor == ExecutorType.SYSTEM
 
+    @pytest.mark.skipif(
+        not __import__("os").environ.get("DISPLAY") and __import__("sys").platform == "linux",
+        reason="pyautogui requires a display server on Linux",
+    )
     def test_screenshot_saves_file(self):
         mock_screenshot = MagicMock()
         with patch("pyautogui.screenshot", return_value=mock_screenshot):
