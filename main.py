@@ -23,12 +23,12 @@ import time
 from aura.core.config_loader import load_config
 from aura.core.command_engine import CommandEngine
 from aura.core.event_bus import EventType, bus
-from aura.core.intent_router import IntentObject, IntentRouter, IntentType
+from aura.core.intent_router import IntentRouter
 from aura.core.llm_brain import BrainController
 from aura.core.ollama_client import OllamaClient
 from aura.core.pipeline_state import PipelineState, StateMachine
-from aura.core.schemas import ExecutionResult
 from aura.modules.stt import STTEngine
+from aura.schemas.intent import IntentType
 from aura.modules.tts import TTSEngine
 from aura.modules.wake_word import WakeWordListener
 from aura.security.safety_gate import SafetyGate
@@ -161,6 +161,12 @@ def startup() -> None:
     tts.start()
     print("[6/8] Pipeline components built")
 
+    # 6b. Session controller — manages active-session lifecycle
+    from aura.core.session_controller import SessionController
+    session = SessionController(config, wake)
+    print("[6/8] SessionController wired (inactivity timeout: "
+          f"{config.get('session', {}).get('inactivity_timeout_minutes', 10)} min)")
+
     # 7. Wire the event-driven pipeline
     # --- State machine transitions ---
     bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda _: state_machine.transition(PipelineState.LISTENING))
@@ -214,7 +220,7 @@ def startup() -> None:
             intent = router.classify(command_text)
             classify_ms = int((time.perf_counter() - t_classify) * 1000)
             print(
-                f"[PIPELINE] Intent: {intent.intent_type.value} "
+                f"[PIPELINE] Intent: {intent.intent_type.name} "
                 f"(confidence={intent.confidence}, {classify_ms}ms)"
             )
 
@@ -258,17 +264,15 @@ def startup() -> None:
 
     bus.subscribe(EventType.WAKE_WORD_DETECTED, _on_wake_detected)
 
-    # --- WakeWordListener auto-arm/disarm via state ---
+    # --- WakeWordListener pause on wake detection ---
+    # Resume is managed exclusively by SessionController to avoid mic
+    # contention (Violation #16 fix). SessionController re-arms wake only
+    # after the session ends and TTS finishes the goodbye announcement.
     def _on_wake_pause(payload) -> None:
         """Pause wake listener when pipeline is active."""
         wake.pause()
 
-    def _on_wake_resume(payload) -> None:
-        """Resume wake listener when pipeline is idle."""
-        wake.resume()
-
     bus.subscribe(EventType.WAKE_WORD_DETECTED, _on_wake_pause)
-    bus.subscribe(EventType.TTS_SPEAKING_FINISHED, _on_wake_resume)
 
     print("[7/8] Event pipeline wired")
 

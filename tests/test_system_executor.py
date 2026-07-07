@@ -9,7 +9,8 @@ from aura.executors.system_executor import SystemExecutor
 from aura.executors.system_monitor import SystemMonitor
 from aura.executors.shell_executor import ShellExecutor, COMMAND_ALLOWLIST
 from aura.utils.app_registry import get_command, is_url
-from aura.core.safety_gate import SafetyGate
+from aura.security.safety_gate import SafetyGate
+from aura.core.event_bus import bus
 
 CONFIG = {
     "safety": {"confirmation_timeout": 1, "audit_log": "/tmp/test_audit.log"},
@@ -172,7 +173,7 @@ class TestShellExecutor:
 
 class TestSafetyGate:
     def setup_method(self):
-        self.gate = SafetyGate(CONFIG)
+        self.gate = SafetyGate(bus, config=CONFIG)
 
     def test_non_destructive_passes_immediately(self):
         from aura.schemas.command import CommandPlan, ExecutorType

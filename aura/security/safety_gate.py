@@ -13,6 +13,7 @@ Denial, silence, or timeout cancels the action.
 from __future__ import annotations
 
 import logging
+import queue
 import sys
 import threading
 import time
@@ -142,6 +143,10 @@ class SafetyGate:
         self._audit_log_path = safety_cfg.get("audit_log", "logs/safety_audit.log")
         self._ensure_audit_dir()
 
+        # Queue for receiving voice confirmation from external callers
+        # (e.g., CommandEngine.receive_safety_confirmation → STT pipeline push)
+        self._response_queue: queue.Queue[str] = queue.Queue()
+
     def _ensure_audit_dir(self) -> None:
         try:
             Path(self._audit_log_path).parent.mkdir(parents=True, exist_ok=True)
@@ -179,6 +184,14 @@ class SafetyGate:
         raw = self._read_line(prompt)
 
         if raw is None:
+            self._audit_log(
+                "CANCELLED",
+                executor="n/a",
+                action=action,
+                params=params,
+                source=source,
+                reason="timeout",
+            )
             self._bus.emit(
                 EventType.SAFETY_DENIED,
                 {"action": action, "source": source, "trace_id": trace_id, "reason": "timeout"},
@@ -189,6 +202,14 @@ class SafetyGate:
 
         response = raw.strip().lower()
         if response in ACCEPTED_RESPONSES:
+            self._audit_log(
+                "CONFIRMED",
+                executor="n/a",
+                action=action,
+                params=params,
+                source=source,
+                reason="user_confirmed",
+            )
             self._bus.emit(
                 EventType.SAFETY_CONFIRMED,
                 {
@@ -200,6 +221,14 @@ class SafetyGate:
             )
             return
 
+        self._audit_log(
+            "CANCELLED",
+            executor="n/a",
+            action=action,
+            params=params,
+            source=source,
+            reason=f"denied (response: {response!r})",
+        )
         self._bus.emit(
             EventType.SAFETY_DENIED,
             {
@@ -213,10 +242,16 @@ class SafetyGate:
             f"Confirmation refused for '{action}' (received {response!r})."
         )
 
+    def receive_confirmation(self, spoken_text: str) -> None:
+        """Accept a confirmation response pushed from the STT layer.
+
+        Non-blocking — stores the response so that a concurrent ``check()``
+        call (blocking on the queue) can consume it.
+        """
+        self._response_queue.put(spoken_text.strip().lower())
+
     def check(self, command_plan: Any) -> bool:
         """Voice-based confirmation for the command engine pipeline."""
-        from aura.core.event_bus import EventType
-
         action = command_plan.action
         params = command_plan.params
         executor = command_plan.executor
@@ -253,7 +288,7 @@ class SafetyGate:
         response_text = ""
         if self._stt:
             try:
-                result = self._stt.listen_and_transcribe()
+                result = self._stt.listen_and_transcribe(max_duration=self._timeout)
                 response_text = result.text.strip().lower() if result.text else ""
             except Exception as exc:
                 logger.error("STT failed during safety check: %s", exc)
@@ -262,11 +297,11 @@ class SafetyGate:
             raw = self._read_line(f"[SAFETY] {prompt_text}\n> ")
             response_text = raw.strip().lower() if raw else ""
         else:
+            # No STT, no input_fn — block on queue waiting for
+            # an external receive_confirmation() push (tests, external callers)
             try:
-                sys.stdout.write(f"[SAFETY] {prompt_text}\n> ")
-                sys.stdout.flush()
-                response_text = input().strip().lower()
-            except Exception:
+                response_text = self._response_queue.get(timeout=self._timeout)
+            except queue.Empty:
                 response_text = ""
 
         confirmed = response_text in ACCEPTED_RESPONSES
@@ -279,6 +314,7 @@ class SafetyGate:
             executor=executor,
             action=action,
             params=params,
+            source="voice",
             reason=reason,
         )
 
@@ -325,19 +361,20 @@ class SafetyGate:
         executor: str,
         action: str,
         params: dict[str, Any],
+        source: str = "unknown",
         reason: str = "",
     ) -> None:
         timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
         if decision == "CONFIRMED":
             line = (
-                f"{timestamp} | CONFIRMED | executor={executor} action={action} "
-                f"params={params}\n"
+                f"{timestamp} | CONFIRMED | source={source} executor={executor} "
+                f"action={action} params={params}\n"
             )
         else:
             line = (
-                f"{timestamp} | CANCELLED | executor={executor} action={action} "
-                f"reason={reason}\n"
+                f"{timestamp} | CANCELLED | source={source} executor={executor} "
+                f"action={action} reason={reason}\n"
             )
 
         try:
@@ -346,7 +383,7 @@ class SafetyGate:
         except Exception as exc:
             logger.error("Audit log write failed: %s", exc)
 
-        logger.info("SafetyGate %s: %s %s", decision, action, reason)
+        logger.info("SafetyGate %s: [%s] %s %s", decision, source, action, reason)
 
 
 class AutoConfirmGate(SafetyGate):
@@ -361,6 +398,7 @@ class AutoConfirmGate(SafetyGate):
             executor=getattr(command_plan, "executor", "unknown"),
             action=getattr(command_plan, "action", "unknown"),
             params=getattr(command_plan, "params", {}),
+            source="auto_confirm",
             reason="auto_confirm",
         )
         return True

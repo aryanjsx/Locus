@@ -30,6 +30,7 @@ import sounddevice as sd
 from dotenv import load_dotenv
 
 from aura.core.event_bus import EventType, bus
+from aura.utils.mic_lock import mic_lock
 
 
 def _resolve_input_device(config):
@@ -75,6 +76,7 @@ class WakeWordListener:
         if self._input_device is not None:
             self._input_device = int(self._input_device)
         self._debug = bool(_get("debug_scores", False))
+        self._no_speech_threshold: float = float(_get("no_speech_threshold", 0.3))
 
         # openwakeword settings (Tier 2)
         self._oww_model = _get("oww_model", "hey_jarvis")
@@ -212,49 +214,50 @@ class WakeWordListener:
                 continue
 
             try:
-                with sd.InputStream(**stream_kwargs) as stream:
-                    speech_count = 0
-                    while (
-                        not self._stop_event.is_set()
-                        and not self._pause_event.is_set()
-                    ):
-                        chunk, _ = stream.read(chunk_samples)
-                        rms = float(np.sqrt(np.mean(chunk ** 2)))
+                with mic_lock:
+                    with sd.InputStream(**stream_kwargs) as stream:
+                        speech_count = 0
+                        while (
+                            not self._stop_event.is_set()
+                            and not self._pause_event.is_set()
+                        ):
+                            chunk, _ = stream.read(chunk_samples)
+                            rms = float(np.sqrt(np.mean(chunk ** 2)))
 
-                        if rms >= self._vad_threshold:
-                            speech_count += 1
-                        else:
-                            speech_count = 0
+                            if rms >= self._vad_threshold:
+                                speech_count += 1
+                            else:
+                                speech_count = 0
 
-                        if speech_count < self._vad_pre_frames:
-                            continue
+                            if speech_count < self._vad_pre_frames:
+                                continue
 
-                        # Speech detected — record for listen_duration
-                        if self._debug:
-                            print(f"[WakeWord] Voice activity (rms={rms:.4f}), recording {self._listen_duration}s...")
+                            # Speech detected — record for listen_duration
+                            if self._debug:
+                                print(f"[WakeWord] Voice activity (rms={rms:.4f}), recording {self._listen_duration}s...")
 
-                        audio_buf = [chunk.flatten()]
-                        for _ in range(record_chunks - 1):
-                            if self._stop_event.is_set() or self._pause_event.is_set():
-                                break
-                            c, _ = stream.read(chunk_samples)
-                            audio_buf.append(c.flatten())
+                            audio_buf = [chunk.flatten()]
+                            for _ in range(record_chunks - 1):
+                                if self._stop_event.is_set() or self._pause_event.is_set():
+                                    break
+                                c, _ = stream.read(chunk_samples)
+                                audio_buf.append(c.flatten())
 
-                        audio = np.concatenate(audio_buf)
-                        text = self._whisper_transcribe(audio)
+                            audio = np.concatenate(audio_buf)
+                            text = self._whisper_transcribe(audio)
 
-                        if self._debug:
-                            print(f'[WakeWord] Heard: "{text}"')
+                            if self._debug:
+                                print(f'[WakeWord] Heard: "{text}"')
 
-                        if self._matches_wake_phrase(text):
-                            command = self._strip_wake_phrase(text)
-                            logger.info('[WakeWord] DETECTED via Whisper: "%s" (cmd: "%s")', text, command)
-                            print(f'[WakeWord] Wake phrase detected: "{text}"')
-                            self._emit_detected("whisper", transcript=text, command=command)
-                            self._cooldown(1.5)
-                            speech_count = 0
-                        else:
-                            speech_count = 0
+                            if self._matches_wake_phrase(text):
+                                command = self._strip_wake_phrase(text)
+                                logger.info('[WakeWord] DETECTED via Whisper: "%s" (cmd: "%s")', text, command)
+                                print(f'[WakeWord] Wake phrase detected: "{text}"')
+                                self._emit_detected("whisper", transcript=text, command=command)
+                                self._cooldown(1.5)
+                                speech_count = 0
+                            else:
+                                speech_count = 0
 
             except Exception as exc:
                 if self._pause_event.is_set() or self._stop_event.is_set():
@@ -275,7 +278,7 @@ class WakeWordListener:
                 audio = audio.astype(np.float32)
             result = self._whisper_model.transcribe(
                 audio, fp16=False, language="en",
-                no_speech_threshold=0.3,
+                no_speech_threshold=self._no_speech_threshold,
                 initial_prompt="Hey Kommy.",
             )
             return result.get("text", "").strip().lower()
@@ -285,7 +288,7 @@ class WakeWordListener:
 
     def _matches_wake_phrase(self, text: str) -> bool:
         """Check if text matches a wake phrase, with fuzzy tolerance for
-        common Whisper mishearings of 'Hey AURA'."""
+        common Whisper mishearings of 'Hey Kommy'."""
         if not text:
             return False
         if any(p.search(text) for p in self._phrase_patterns):
@@ -330,16 +333,17 @@ class WakeWordListener:
                 time.sleep(0.05)
                 continue
             try:
-                with sd.InputStream(**stream_kwargs) as stream:
-                    while not self._stop_event.is_set() and not self._pause_event.is_set():
-                        audio_chunk, _ = stream.read(self._chunk_samples)
-                        pcm = (np.clip(audio_chunk.flatten(), -1, 1) * 32767).astype(np.int16)
-                        prediction = oww_model.predict(pcm, patience=patience, threshold=threshold)
-                        if prediction.get(self._oww_model, 0) > 0:
-                            logger.info("[WakeWord] DETECTED via openwakeword")
-                            self._emit_detected("openwakeword")
-                            self._cooldown(1.5)
-                            oww_model.reset()
+                with mic_lock:
+                    with sd.InputStream(**stream_kwargs) as stream:
+                        while not self._stop_event.is_set() and not self._pause_event.is_set():
+                            audio_chunk, _ = stream.read(self._chunk_samples)
+                            pcm = (np.clip(audio_chunk.flatten(), -1, 1) * 32767).astype(np.int16)
+                            prediction = oww_model.predict(pcm, patience=patience, threshold=threshold)
+                            if prediction.get(self._oww_model, 0) > 0:
+                                logger.info("[WakeWord] DETECTED via openwakeword")
+                                self._emit_detected("openwakeword")
+                                self._cooldown(1.5)
+                                oww_model.reset()
             except Exception as exc:
                 if self._pause_event.is_set() or self._stop_event.is_set():
                     continue

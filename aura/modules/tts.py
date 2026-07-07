@@ -185,6 +185,7 @@ class TTSEngine:
         """Synthesize with edge-tts and play the resulting audio."""
         if self._interrupted:
             return False
+        tmp_path: str | None = None
         try:
             import asyncio
             import edge_tts
@@ -199,27 +200,28 @@ class TTSEngine:
             asyncio.run(_synthesize())
 
             if self._interrupted:
-                Path(tmp_path).unlink(missing_ok=True)
                 return False
 
             self._play_file(tmp_path)
-            Path(tmp_path).unlink(missing_ok=True)
             return True
         except Exception as exc:
             logger.debug("Edge TTS error: %s", exc)
             return False
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
 
     def _try_piper(self, text: str) -> bool:
         """Synthesize with Piper TTS and play the resulting audio."""
         if self._interrupted:
             return False
+        tmp_path: str | None = None
         try:
             import subprocess
 
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = tmp.name
 
-            # Use piper CLI — list form, no shell execution
             proc = subprocess.run(
                 ["piper", "--model", self._piper_voice, "--output_file", tmp_path],
                 input=text.encode("utf-8"),
@@ -228,15 +230,16 @@ class TTSEngine:
             )
             if proc.returncode == 0:
                 if self._interrupted:
-                    Path(tmp_path).unlink(missing_ok=True)
                     return False
                 self._play_file(tmp_path)
-                Path(tmp_path).unlink(missing_ok=True)
                 return True
             return False
         except Exception as exc:
             logger.debug("Piper TTS error: %s", exc)
             return False
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
 
     def _try_pyttsx3(self, text: str) -> bool:
         """Final fallback — always available via pyttsx3."""

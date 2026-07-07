@@ -8,33 +8,14 @@ import time
 from typing import Any
 
 from aura.schemas.intent import IntentObject, IntentType
-from aura.schemas.command import CommandPlan, ExecutionResult, ExecutorType
-from aura.core.safety_gate import SafetyGate
+from aura.schemas.command import CommandPlan, DESTRUCTIVE_ACTIONS, ExecutionResult, ExecutorType
+from aura.security.safety_gate import SafetyGate
 from aura.core.event_bus import bus, EventType
 from aura.executors.system_executor import SystemExecutor
 from aura.executors.system_monitor import SystemMonitor
 from aura.executors.shell_executor import ShellExecutor
 
 logger = logging.getLogger("aura.command_engine")
-
-# -----------------------------------------------------------------------
-# Destructive actions — must always go through SafetyGate
-# -----------------------------------------------------------------------
-_DESTRUCTIVE_ACTIONS: frozenset[tuple[ExecutorType, str]] = frozenset({
-    (ExecutorType.SYSTEM,  "shutdown"),
-    (ExecutorType.SYSTEM,  "restart"),
-    (ExecutorType.SYSTEM,  "log_off"),
-    (ExecutorType.SYSTEM,  "kill_process"),
-    (ExecutorType.SHELL,   "run_command"),   # shell commands always confirm
-})
-
-# -----------------------------------------------------------------------
-# Actions that require confirmation but are not strictly "destructive"
-# (e.g., closing apps the user might not want closed)
-# -----------------------------------------------------------------------
-_CONFIRM_ACTIONS: frozenset[tuple[ExecutorType, str]] = frozenset({
-    (ExecutorType.SYSTEM,  "close_app"),
-}) | _DESTRUCTIVE_ACTIONS
 
 
 class CommandEngine:
@@ -48,7 +29,7 @@ class CommandEngine:
     def __init__(self, config: dict[str, Any], event_bus: Any = None, safety_gate: Any = None) -> None:
         self._config = config
         self._bus = event_bus  # kept for external callers; internal code uses module-level bus
-        self._safety  = safety_gate if safety_gate is not None else SafetyGate(config)
+        self._safety  = safety_gate if safety_gate is not None else SafetyGate(bus, config=config)
         self._system  = SystemExecutor(config)
         self._monitor = SystemMonitor(config)
         self._shell   = ShellExecutor(config)
@@ -84,9 +65,19 @@ class CommandEngine:
                     executor=None,
                 )
         else:
-            plan = self._normalize_plan(intent_or_plan)
+            plan = intent_or_plan
 
         executor_name = plan.executor.name if isinstance(plan.executor, ExecutorType) else str(plan.executor)
+
+        # Re-derive is_destructive from the canonical set — NEVER trust
+        # upstream flags alone.  This is the last line of defense.
+        executor_for_check = plan.executor if isinstance(plan.executor, ExecutorType) else None
+        if executor_for_check is not None:
+            actually_destructive = (executor_for_check, plan.action) in DESTRUCTIVE_ACTIONS
+        else:
+            actually_destructive = plan.is_destructive
+        plan.is_destructive = actually_destructive
+        plan.requires_confirm = plan.requires_confirm or actually_destructive
 
         bus.emit(EventType.COMMAND_PLAN_READY, {
             "executor": executor_name,
@@ -133,28 +124,6 @@ class CommandEngine:
         })
 
         return result
-
-    # ------------------------------------------------------------------
-    # Plan normalizer — handles old-style plans (string executor) from BrainController
-    # ------------------------------------------------------------------
-
-    def _normalize_plan(self, plan: Any) -> CommandPlan:
-        """Convert an old-style CommandPlan (string executor) to the new format."""
-        if isinstance(plan, CommandPlan) and isinstance(plan.executor, ExecutorType):
-            return plan
-
-        executor_str = plan.executor.upper() if isinstance(plan.executor, str) else plan.executor.name
-        executor_map = {e.name: e for e in ExecutorType}
-        executor = executor_map.get(executor_str, ExecutorType.LLM_ONLY)
-
-        return CommandPlan(
-            executor=executor,
-            action=plan.action,
-            params=plan.params if hasattr(plan, "params") else {},
-            requires_confirm=getattr(plan, "requires_confirm", False),
-            is_destructive=getattr(plan, "is_destructive", False),
-            timeout_seconds=getattr(plan, "timeout_seconds", 30),
-        )
 
     # ------------------------------------------------------------------
     # Plan builder — maps IntentType + entities → CommandPlan
@@ -279,8 +248,14 @@ class CommandEngine:
         if executor == ExecutorType.LLM_ONLY:
             return ExecutionResult(
                 success=True,
-                output="",   # BrainController fills this
+                output="",
                 executor=ExecutorType.LLM_ONLY,
+                data={
+                    "mode": "llm_stream",
+                    "model": plan.params.get("model", ""),
+                    "prompt": plan.params.get("prompt", ""),
+                    "requires_rag": plan.params.get("requires_rag", False),
+                },
             )
         if executor == ExecutorType.SESSION:
             bus.emit(EventType.SESSION_ENDED, {"reason": "manual_voice_command"})
@@ -317,8 +292,8 @@ class CommandEngine:
         timeout: int = 30,
     ) -> CommandPlan:
         key = (executor, action)
-        is_dest = is_destructive or key in _DESTRUCTIVE_ACTIONS
-        needs_confirm = requires_confirm or key in _CONFIRM_ACTIONS
+        is_dest = is_destructive or key in DESTRUCTIVE_ACTIONS
+        needs_confirm = requires_confirm or is_dest
         return CommandPlan(
             executor=executor,
             action=action,

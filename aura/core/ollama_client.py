@@ -44,6 +44,7 @@ class OllamaClient:
         self._timeout: int = ollama_cfg.get("timeout", 60)
         self._retries: int = ollama_cfg.get("retries", 3)
         self._keep_alive: str = ollama_cfg.get("keep_alive", "10m")
+        self._health_timeout: int = int(ollama_cfg.get("health_check_timeout", 5))
 
     def chat(
         self,
@@ -51,11 +52,13 @@ class OllamaClient:
         prompt: str,
         system_prompt: str = "",
         num_predict: int = 150,
+        timeout: float | None = None,
     ) -> OllamaResponse:
         """Send a blocking chat completion request to Ollama."""
         model = self._resolve_model(model)
         messages = self._build_messages(prompt, system_prompt)
         bus.emit(EventType.LLM_REQUEST_SENT, {"model": model, "prompt_len": len(prompt)})
+        effective_timeout = timeout if timeout is not None else self._timeout
 
         last_exc: Exception | None = None
         for attempt in range(self._retries):
@@ -73,7 +76,7 @@ class OllamaClient:
                             "temperature": 0.7,
                         },
                     },
-                    timeout=self._timeout,
+                    timeout=effective_timeout,
                 )
                 response.raise_for_status()
                 duration_ms = int((time.perf_counter() - start) * 1000)
@@ -176,7 +179,7 @@ class OllamaClient:
     def health_check(self) -> bool:
         """GET /api/tags — returns True if Ollama is reachable."""
         try:
-            r = httpx.get(f"{self._base_url}/api/tags", timeout=5)
+            r = httpx.get(f"{self._base_url}/api/tags", timeout=self._health_timeout)
             return r.status_code == 200
         except Exception:
             return False
@@ -184,7 +187,7 @@ class OllamaClient:
     def list_models(self) -> list[str]:
         """Return names of all locally available models."""
         try:
-            r = httpx.get(f"{self._base_url}/api/tags", timeout=5)
+            r = httpx.get(f"{self._base_url}/api/tags", timeout=self._health_timeout)
             r.raise_for_status()
             return [m["name"] for m in r.json().get("models", [])]
         except Exception as exc:

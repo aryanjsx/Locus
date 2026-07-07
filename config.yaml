@@ -108,6 +108,8 @@ routing:
   realtime_warning:          true
   intent_timeout_seconds:    10
   intent_max_retries:        3
+  fast_confidence:           0.85
+  fallback_confidence:       0.3
 
 stt:
   model:                  "base"
@@ -125,6 +127,7 @@ wake_word:
   vad_pre_frames:    3
   input_device:      null
   debug_scores:      true
+  no_speech_threshold: 0.3
 
   # openwakeword fallback (Tier 2)
   # TODO: A custom "Hey Kommy" wake word model needs to be trained/downloaded.
@@ -151,6 +154,7 @@ ollama:
   timeout:  60
   retries:  3
   keep_alive: "10m"
+  health_check_timeout: 5
 
 connectivity:
   poll_interval: 30

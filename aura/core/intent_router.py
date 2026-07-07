@@ -14,43 +14,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
 from typing import Any
 
-from aura.core.ollama_client import OllamaClient, OllamaUnavailableError
+from aura.core.ollama_client import OllamaClient
 from aura.core.event_bus import EventType, bus
+from aura.schemas.intent import IntentObject, IntentType
 
 logger = logging.getLogger("aura.router")
-
-
-class IntentType(str, Enum):
-    """All recognized user intent categories."""
-
-    GENERAL_KNOWLEDGE = "GENERAL_KNOWLEDGE"
-    CODE_GENERATION = "CODE_GENERATION"
-    SYSTEM_COMMAND = "SYSTEM_COMMAND"
-    DEV_TASK = "DEV_TASK"
-    PROJECT_CONTEXT = "PROJECT_CONTEXT"
-    VISION_TASK = "VISION_TASK"
-    REALTIME_QUERY = "REALTIME_QUERY"
-    UNKNOWN = "UNKNOWN"
-
-
-@dataclass
-class IntentObject:
-    """Structured classification result from the router."""
-
-    intent_type: IntentType
-    raw_text: str
-    cleaned_text: str
-    entities: dict[str, Any]
-    model_override: str | None
-    requires_rag: bool
-    confidence: float
-    timestamp: datetime = field(default_factory=datetime.now)
 
 
 # Exact system prompt per spec — do NOT modify
@@ -131,37 +101,62 @@ class IntentRouter:
         routing_cfg = config.get("routing", {})
         self._intent_timeout: int = routing_cfg.get("intent_timeout_seconds", 10)
         self._max_retries: int = routing_cfg.get("intent_max_retries", 3)
+        self._fast_confidence: float = float(routing_cfg.get("fast_confidence", 0.85))
+        self._fallback_confidence: float = float(routing_cfg.get("fallback_confidence", 0.3))
 
     def classify(self, raw_text: str) -> IntentObject:
-        """Classify a voice-transcribed command.
+        """Classify a voice-transcribed command using two-tier strategy.
 
-        Regex-only classification with GENERAL_KNOWLEDGE fallback (no LLM call).
+        Tier 1: Fast regex patterns for obvious intents (instant, no LLM call).
+        Tier 2: LLM classification via Ollama for ambiguous input, with
+                 per-attempt timeout (default 10s) and retry on invalid JSON
+                 (default 3 attempts).
+        Fallback: IntentType.UNKNOWN after all retries exhausted or Ollama
+                  unavailable — routes into the RAG+LLM response path.
         """
         cleaned = raw_text.lower().strip()
 
         # Tier 1: Fast-path regex
         fast_result = self._fast_classify(raw_text, cleaned)
         if fast_result is not None:
-            logger.info("Fast-classified as %s", fast_result.intent_type.value)
+            logger.info("Fast-classified as %s", fast_result.intent_type.name)
             return fast_result
 
-        # Fallback to GENERAL_KNOWLEDGE (no LLM call)
+        # Tier 2: LLM classification with retry + timeout
+        llm_result = self._llm_classify(raw_text, cleaned)
+        if llm_result is not None:
+            logger.info(
+                "LLM-classified as %s (confidence=%.2f)",
+                llm_result.intent_type.name, llm_result.confidence,
+            )
+            self._event_bus.emit(EventType.INTENT_CLASSIFIED, {
+                "intent_type": llm_result.intent_type.name,
+                "confidence": llm_result.confidence,
+                "raw_text": raw_text,
+                "fast_path": False,
+            })
+            return llm_result
+
+        # Final fallback: UNKNOWN (not GENERAL_KNOWLEDGE) per spec Section 2.3
         fallback = IntentObject(
-            intent_type=IntentType.GENERAL_KNOWLEDGE,
+            intent_type=IntentType.UNKNOWN,
             raw_text=raw_text,
             cleaned_text=cleaned,
             entities={},
             model_override=self._models.get("general"),
             requires_rag=True,
-            confidence=0.7,
+            confidence=self._fallback_confidence,
         )
         self._event_bus.emit(EventType.INTENT_CLASSIFIED, {
-            "intent_type": fallback.intent_type.value,
+            "intent_type": fallback.intent_type.name,
             "confidence": fallback.confidence,
             "raw_text": raw_text,
-            "fast_path": True,
+            "fast_path": False,
         })
-        logger.info("Unrecognized input — fallback to GENERAL_KNOWLEDGE")
+        logger.warning(
+            "LLM classification failed after %d retries - falling back to UNKNOWN",
+            self._max_retries,
+        )
         return fallback
 
     def _fast_classify(self, raw_text: str, cleaned: str) -> IntentObject | None:
@@ -181,15 +176,56 @@ class IntentRouter:
                     entities=entities,
                     model_override=model_override,
                     requires_rag=False,
-                    confidence=0.85,
+                    confidence=self._fast_confidence,
                 )
                 self._event_bus.emit(EventType.INTENT_CLASSIFIED, {
-                    "intent_type": result.intent_type.value,
+                    "intent_type": result.intent_type.name,
                     "confidence": result.confidence,
                     "raw_text": raw_text,
                     "fast_path": True,
                 })
                 return result
+        return None
+
+    def _llm_classify(self, raw_text: str, cleaned: str) -> IntentObject | None:
+        """Tier 2: LLM-based classification with retry and timeout.
+
+        Calls Ollama with ROUTER_CLASSIFY_V1_PROMPT, enforcing per-attempt
+        timeout of self._intent_timeout seconds. Retries up to self._max_retries
+        times on invalid/unparseable JSON. Returns None if all retries fail or
+        Ollama is unreachable.
+        """
+        from aura.core.ollama_client import OllamaUnavailableError
+
+        model = self._models.get("fast", self._models.get("general", ""))
+
+        for attempt in range(1, self._max_retries + 1):
+            try:
+                response = self._ollama.chat(
+                    model=model,
+                    prompt=raw_text,
+                    system_prompt=ROUTER_CLASSIFY_V1_PROMPT,
+                    num_predict=120,
+                    timeout=self._intent_timeout,
+                )
+                result = self._parse_response(response.text, raw_text)
+                if result is not None:
+                    return result
+
+                logger.warning(
+                    "LLM returned unparseable JSON (attempt %d/%d): %r",
+                    attempt, self._max_retries, response.text[:200],
+                )
+
+            except OllamaUnavailableError:
+                logger.error("Ollama unavailable during classification - giving up")
+                return None
+            except Exception as exc:
+                logger.warning(
+                    "LLM classification attempt %d/%d failed: %s",
+                    attempt, self._max_retries, exc,
+                )
+
         return None
 
     def _parse_response(self, text: str, raw_text: str) -> IntentObject | None:
@@ -217,8 +253,8 @@ class IntentRouter:
 
         intent_str = data.get("intent_type", "").upper()
         try:
-            intent_type = IntentType(intent_str)
-        except ValueError:
+            intent_type = IntentType[intent_str]
+        except KeyError:
             return None
 
         confidence = data.get("confidence", 0.5)
@@ -243,5 +279,4 @@ class IntentRouter:
             model_override=model_override,
             requires_rag=requires_rag,
             confidence=confidence,
-            timestamp=datetime.now(),
         )

@@ -48,7 +48,7 @@ class ShellExecutor:
     def __init__(self, config: dict[str, Any]) -> None:
         self._config = config
         self._timeout_default: int = int(
-            config.get("executors", {}).get("shell_timeout", 30)
+            config.get("shell", {}).get("timeout", 120)
         )
 
     def run(self, action: str, params: dict[str, Any]) -> ExecutionResult:

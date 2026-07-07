@@ -1,9 +1,19 @@
 """
 AURA — Brain Controller (Phase 2).
 
-Receives a classified IntentObject from the IntentRouter, selects the
-appropriate LLM model from config, builds a CommandPlan, and emits
-COMMAND_PLAN_READY on the EventBus.
+Plan builder and model selector. Receives a classified IntentObject from
+the IntentRouter, selects the appropriate LLM model from config, and
+builds a CommandPlan describing what should happen next.
+
+For LLM-backed intents (GENERAL_KNOWLEDGE, CODE_GENERATION, PROJECT_CONTEXT,
+UNKNOWN, REALTIME_QUERY): BrainController sets executor=LLM_ONLY and packs
+the selected model + prompt into params. The actual Ollama streaming call
+happens downstream in main.py's _stream_to_tts() pipeline.
+
+For executor-backed intents (SYSTEM_COMMAND, DEV_TASK, VISION_TASK):
+BrainController resolves the action via heuristic entity extraction and
+routes directly to the appropriate executor. No LLM step is needed here —
+the spec's routing table (§4.4) specifies direct dispatch for these intents.
 
 Model selection rules:
   SYSTEM_COMMAND / DEV_TASK  → config.models.fast
@@ -19,37 +29,35 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from aura.core.schemas import CommandPlan
+from aura.schemas.command import CommandPlan, ExecutorType
 
 logger = logging.getLogger("aura.brain")
 
-# IntentType string → (config models key, executor, requires_rag)
-_INTENT_DISPATCH: dict[str, tuple[str, str, bool]] = {
-    "SYSTEM_COMMAND":     ("fast",    "SYSTEM",   False),
-    "DEV_TASK":           ("fast",    "SHELL",    False),
-    "CODE_GENERATION":    ("code",    "LLM_ONLY", False),
-    "PROJECT_CONTEXT":    ("general", "LLM_ONLY", True),
-    "UNKNOWN":            ("general", "LLM_ONLY", True),
-    "GENERAL_KNOWLEDGE":  ("general", "LLM_ONLY", False),
-    "VISION_TASK":        ("vision",  "VISION",   False),
-    "REALTIME_QUERY":     ("general", "LLM_ONLY", False),
+# IntentType name → (config models key, ExecutorType, requires_rag)
+_INTENT_DISPATCH: dict[str, tuple[str, ExecutorType, bool]] = {
+    "SYSTEM_COMMAND":     ("fast",    ExecutorType.SYSTEM,   False),
+    "DEV_TASK":           ("fast",    ExecutorType.SHELL,    False),
+    "CODE_GENERATION":    ("code",    ExecutorType.LLM_ONLY, False),
+    "PROJECT_CONTEXT":    ("general", ExecutorType.LLM_ONLY, True),
+    "UNKNOWN":            ("general", ExecutorType.LLM_ONLY, True),
+    "GENERAL_KNOWLEDGE":  ("general", ExecutorType.LLM_ONLY, False),
+    "VISION_TASK":        ("vision",  ExecutorType.VISION,   False),
+    "REALTIME_QUERY":     ("general", ExecutorType.LLM_ONLY, False),
 }
-
-# Actions that are considered destructive and require safety gate
-_DESTRUCTIVE_ACTIONS: frozenset[str] = frozenset({
-    "delete_file", "delete_folder", "rmdir",
-    "git_push", "git_reset_hard", "git_branch_delete", "git_force_push",
-    "docker_remove", "docker_prune",
-    "kill_process",
-})
 
 
 class BrainController:
-    """Translates classified intents into executable CommandPlans."""
+    """Plan builder: selects model, resolves action, builds CommandPlan.
+
+    Does NOT call Ollama directly — LLM streaming happens downstream in
+    the main pipeline worker via _stream_to_tts().
+    """
 
     def __init__(self, config: dict[str, Any], event_bus: Any, ollama_client: Any) -> None:
         self._config = config
         self._event_bus = event_bus
+        # Retained for Phase 3 multi-step plan generation; streaming
+        # calls currently happen in main.py's _stream_to_tts() pipeline.
         self._ollama = ollama_client
         self._models: dict[str, str] = config.get("models", {})
 
@@ -67,10 +75,10 @@ class BrainController:
             The plan ready for CommandEngine.execute().
         """
         intent_type = intent_object.intent_type
-        intent_type_str = intent_type.value if hasattr(intent_type, "value") else str(intent_type)
+        intent_type_str = intent_type.name if hasattr(intent_type, "name") else str(intent_type)
 
         model_key, executor, requires_rag = _INTENT_DISPATCH.get(
-            intent_type_str, ("general", "LLM_ONLY", True)
+            intent_type_str, ("general", ExecutorType.LLM_ONLY, True)
         )
 
         model = self._models.get(model_key, self._models.get("general", ""))
@@ -79,7 +87,6 @@ class BrainController:
 
         # Determine action from entities or intent type
         action = self._resolve_action(intent_type_str, intent_object.entities, intent_object.cleaned_text)
-        is_destructive = action in _DESTRUCTIVE_ACTIONS
 
         # Build params
         params: dict[str, Any] = {
@@ -94,8 +101,6 @@ class BrainController:
             executor=executor,
             action=action,
             params=params,
-            requires_confirm=is_destructive,
-            is_destructive=is_destructive,
             timeout_seconds=self._config.get("ollama", {}).get("timeout", 60),
             intent_ref=intent_object,
         )
@@ -111,7 +116,16 @@ class BrainController:
 
     @staticmethod
     def _resolve_action(intent_type_str: str, entities: dict[str, Any], text: str) -> str:
-        """Derive a concrete action string from intent + entities."""
+        """Derive a concrete action string from intent + entities.
+
+        For executor-backed intents (SYSTEM_COMMAND, DEV_TASK, VISION_TASK)
+        this performs keyword-based entity extraction — per spec §4.4, these
+        intent types route to executors via entity matching, not LLM reasoning.
+
+        For LLM-backed intents (GENERAL_KNOWLEDGE, CODE_GENERATION, etc.),
+        returns a generic action string; the real work happens downstream
+        when main.py streams from Ollama.
+        """
         if entities.get("action"):
             return str(entities["action"])
 

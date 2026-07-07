@@ -18,7 +18,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aura.core.config_loader import load_config
-from aura.core.intent_router import IntentRouter, IntentType
+from aura.core.intent_router import IntentRouter
+from aura.schemas.intent import IntentType
 from aura.core.ollama_client import OllamaClient
 from aura.modules.stt import STTEngine
 from aura.modules.tts import TTSEngine

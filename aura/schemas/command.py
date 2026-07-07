@@ -42,3 +42,38 @@ class ExecutionResult:
     executor:      ExecutorType | None = None
     duration_ms:   int              = 0
     was_confirmed: bool             = False
+
+
+# ---------------------------------------------------------------------------
+# Canonical destructive-action registry.
+#
+# This is the SINGLE source of truth for which (executor, action) pairs are
+# destructive.  CommandEngine re-derives is_destructive from this set before
+# calling SafetyGate — upstream flags are advisory only.
+#
+# Cross-referenced against AURA_ENGINEERING_SPEC.md §4.2 and §5.1.
+# ---------------------------------------------------------------------------
+
+DESTRUCTIVE_ACTIONS: frozenset[tuple[ExecutorType, str]] = frozenset({
+    # SYSTEM — power/process management (§5.1 + code extensions)
+    (ExecutorType.SYSTEM, "shutdown"),
+    (ExecutorType.SYSTEM, "restart"),
+    (ExecutorType.SYSTEM, "log_off"),
+    (ExecutorType.SYSTEM, "kill_process"),
+    (ExecutorType.SYSTEM, "close_app"),
+    # SYSTEM — file destruction (spec §4.2 FILE.delete/rmdir mapped here)
+    (ExecutorType.SYSTEM, "delete_file"),
+    (ExecutorType.SYSTEM, "delete_folder"),
+    (ExecutorType.SYSTEM, "rmdir"),
+    # SHELL — arbitrary commands always confirm (defense-in-depth)
+    (ExecutorType.SHELL, "run_command"),
+    # GIT — spec §4.2 destructive actions
+    (ExecutorType.GIT, "push"),
+    (ExecutorType.GIT, "branch_delete"),
+    (ExecutorType.GIT, "force_push"),
+    (ExecutorType.GIT, "reset_hard"),
+    # DOCKER — spec §4.2 destructive actions
+    (ExecutorType.DOCKER, "build"),
+    (ExecutorType.DOCKER, "remove"),
+    (ExecutorType.DOCKER, "prune"),
+})

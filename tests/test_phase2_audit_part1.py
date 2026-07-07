@@ -13,7 +13,8 @@ import numpy as np
 import pytest
 
 from aura.core.config_loader import load_config
-from aura.core.intent_router import IntentRouter, IntentType, IntentObject
+from aura.core.intent_router import IntentRouter
+from aura.schemas.intent import IntentObject, IntentType
 from aura.core.ollama_client import OllamaClient, OllamaResponse, OllamaUnavailableError
 from aura.utils.event_bus import EventBus, EventPayload, EventType, bus
 
@@ -396,7 +397,7 @@ class TestIntentRouterHappyPath:
             intent = router.classify(text)
             # Regex may classify differently than the LLM test cases;
             # we check that every input gets a valid, non-None intent.
-            results.append((text, expected, intent.intent_type.value, intent.intent_type is not None))
+            results.append((text, expected, intent.intent_type.name, intent.intent_type is not None))
         classified = sum(1 for *_, p in results if p)
         assert classified == len(self.STANDARD_CASES), "All inputs must be classified"
 
@@ -444,8 +445,8 @@ class TestIntentObjectContract:
         ]
         for text, expected_intent, expected_model in cases:
             result = router.classify(text)
-            assert result.intent_type.value == expected_intent, \
-                f"'{text}': expected {expected_intent}, got {result.intent_type.value}"
+            assert result.intent_type.name == expected_intent, \
+                f"'{text}': expected {expected_intent}, got {result.intent_type.name}"
             assert result.model_override == expected_model, \
                 f"'{text}': expected model {expected_model}, got {result.model_override}"
 
@@ -461,25 +462,30 @@ class TestIntentObjectContract:
 
 class TestIntentRouterAdversarial:
 
-    def test_unmatched_input_defaults_to_general_knowledge(self, config):
-        """Unrecognized input defaults to GENERAL_KNOWLEDGE (no LLM call)."""
-        router = IntentRouter(config, MagicMock())
-        result = router.classify("blah blah random words")
-        assert result.intent_type == IntentType.GENERAL_KNOWLEDGE
-        assert result.confidence == 0.7
-
-    def test_no_llm_call_for_classification(self, config):
-        """Classification must never call the LLM — pure regex only."""
+    def test_unmatched_input_defaults_to_unknown(self, config):
+        """Unrecognized input falls back to UNKNOWN after LLM retries exhaust (spec Section 2.3)."""
         mock_client = MagicMock()
+        mock_client.chat.return_value = MagicMock(text="not valid json")
         router = IntentRouter(config, mock_client)
-        router.classify("what is python")
-        router.classify("random unknown phrase")
-        mock_client.chat.assert_not_called()
+        result = router.classify("blah blah random words")
+        assert result.intent_type == IntentType.UNKNOWN
+        assert result.confidence == 0.3
 
-    def test_empty_string_input_defaults_to_general(self, config, mock_ollama_client):
+    def test_llm_called_for_unmatched_input(self, config):
+        """Unrecognized input triggers Tier 2 LLM classification (spec Section 2.3)."""
+        mock_client = MagicMock()
+        mock_client.chat.return_value = MagicMock(text='{"intent_type":"GENERAL_KNOWLEDGE","confidence":0.8,"entities":{},"requires_rag":false}')
+        router = IntentRouter(config, mock_client)
+        router.classify("what is python")  # regex match — no LLM
+        mock_client.chat.assert_not_called()
+        router.classify("random unknown phrase")  # no regex — LLM called
+        assert mock_client.chat.called
+
+    def test_empty_string_input_defaults_to_unknown(self, config, mock_ollama_client):
+        mock_ollama_client.chat.return_value = MagicMock(text="not json")
         router = IntentRouter(config, mock_ollama_client)
         result = router.classify("")
-        assert result.intent_type == IntentType.GENERAL_KNOWLEDGE
+        assert result.intent_type == IntentType.UNKNOWN
 
     def test_shell_injection_in_input_is_not_executed(self, config, mock_ollama_client):
         router = IntentRouter(config, mock_ollama_client)

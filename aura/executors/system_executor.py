@@ -335,38 +335,41 @@ class SystemExecutor:
 
     def screenshot(self, params: dict[str, Any]) -> ExecutionResult:
         """
-        Take a screenshot and save to ~/Pictures/AURA/screenshots/.
+        Take a screenshot to a temporary file for downstream consumption
+        (e.g., LLaVA vision description in Phase 4). The file is deleted
+        after the data is returned — screenshots are NOT persisted per
+        spec Section 5.3.
 
         params:
-            filename: str (optional) — defaults to timestamp
+            filename: str (optional) — used in output message only
         """
         try:
             import pyautogui
+            import tempfile
             from datetime import datetime
-
-            save_dir = Path.home() / "Pictures" / "AURA" / "screenshots"
-            save_dir.mkdir(parents=True, exist_ok=True)
 
             filename: str = params.get("filename", "")
             if not filename:
                 filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
 
-            # Sanitise filename — strip any path separators
-            filename = Path(filename).name
-            if not filename.endswith(".png"):
-                filename += ".png"
+            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            tmp_path = Path(tmp.name)
+            tmp.close()
 
-            save_path = save_dir / filename
-            screenshot = pyautogui.screenshot()
-            screenshot.save(str(save_path))
+            try:
+                screenshot = pyautogui.screenshot()
+                screenshot.save(str(tmp_path))
 
-            logger.info(f"Screenshot saved: {save_path}")
-            return ExecutionResult(
-                success=True,
-                output=f"Screenshot saved to {save_path.name}.",
-                data={"path": str(save_path)},
-                executor=ExecutorType.SYSTEM,
-            )
+                logger.info(f"Screenshot captured (transient): {tmp_path.name}")
+                return ExecutionResult(
+                    success=True,
+                    output=f"Screenshot captured: {filename}",
+                    data={"path": str(tmp_path), "transient": True},
+                    executor=ExecutorType.SYSTEM,
+                )
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
         except ImportError:
             return ExecutionResult(
                 success=False,

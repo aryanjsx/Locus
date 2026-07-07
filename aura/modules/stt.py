@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from aura.utils.audio_input import resolve_input_device
+from aura.utils.mic_lock import mic_lock
 from aura.core.event_bus import EventType, bus
 
 logger = logging.getLogger("aura.stt")
@@ -124,20 +125,27 @@ class STTEngine:
                 text="", confidence=0.0, duration_ms=0, is_empty=True
             )
 
-    def listen_and_transcribe(self) -> TranscriptionResult:
+    def listen_and_transcribe(
+        self, max_duration: float | None = None
+    ) -> TranscriptionResult:
         """Full pipeline: record audio → detect silence → transcribe.
+
+        Parameters
+        ----------
+        max_duration : float | None
+            Maximum recording time in seconds. Overrides the configured
+            ``stt.max_recording`` value when provided.  Used by SafetyGate
+            to enforce the shorter confirmation timeout window.
 
         Emits RECORDING_STARTED, RECORDING_STOPPED, TRANSCRIPTION_COMPLETE.
         """
         import sounddevice as sd
 
-        # Brief delay to let wake word stream close and release the device
-        time.sleep(0.15)
-
         bus.emit(EventType.RECORDING_STARTED, {})
 
+        effective_max = max_duration if max_duration is not None else self._max_recording
         chunk_samples = int(self._sample_rate * _CHUNK_DURATION_MS / 1000)
-        max_chunks = int(self._max_recording * 1000 / _CHUNK_DURATION_MS)
+        max_chunks = int(effective_max * 1000 / _CHUNK_DURATION_MS)
         silence_chunks_needed = int(self._silence_timeout * 1000 / _CHUNK_DURATION_MS)
 
         audio_chunks: list[np.ndarray] = []
@@ -148,25 +156,26 @@ class STTEngine:
             if self._input_device is None:
                 self._input_device = resolve_input_device(self._config)
 
-            with sd.InputStream(
-                samplerate=self._sample_rate,
-                channels=1,
-                dtype="float32",
-                blocksize=chunk_samples,
-                device=self._input_device,
-            ) as stream:
-                for _ in range(max_chunks):
-                    chunk, _ = stream.read(chunk_samples)
-                    audio_chunks.append(chunk.flatten())
+            with mic_lock:
+                with sd.InputStream(
+                    samplerate=self._sample_rate,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=chunk_samples,
+                    device=self._input_device,
+                ) as stream:
+                    for _ in range(max_chunks):
+                        chunk, _ = stream.read(chunk_samples)
+                        audio_chunks.append(chunk.flatten())
 
-                    rms = float(np.sqrt(np.mean(chunk**2)))
-                    if rms < self._rms_silence_threshold:
-                        silence_count += 1
-                    else:
-                        silence_count = 0
+                        rms = float(np.sqrt(np.mean(chunk**2)))
+                        if rms < self._rms_silence_threshold:
+                            silence_count += 1
+                        else:
+                            silence_count = 0
 
-                    if silence_count >= silence_chunks_needed and len(audio_chunks) > silence_chunks_needed:
-                        break
+                        if silence_count >= silence_chunks_needed and len(audio_chunks) > silence_chunks_needed:
+                            break
 
         except Exception as exc:
             logger.error("Recording failed: %s", exc)

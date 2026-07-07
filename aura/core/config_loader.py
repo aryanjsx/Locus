@@ -2,7 +2,7 @@
 AURA — Configuration Loader with strict required-key validation.
 
 Loads ``config.yaml`` (user-local, gitignored) with fallback to
-``config.yaml.example`` (tracked template), deep-merges into built-in
+``config.example.yaml`` (tracked template), deep-merges into built-in
 defaults, applies environment overrides, and then **validates that every
 key in :data:`REQUIRED_KEYS` is present and non-empty**.
 
@@ -25,7 +25,7 @@ logger = logging.getLogger("aura.config")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 _CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
-_FALLBACK_PATH = _PROJECT_ROOT / "config.yaml.example"
+_FALLBACK_PATH = _PROJECT_ROOT / "config.example.yaml"
 
 # Keys that MUST be present (dot-notation).  Loader fails hard if any
 # is missing or resolves to ``None`` / empty string / empty list.
@@ -198,7 +198,7 @@ def _validate_required_sections(raw: dict[str, Any]) -> None:
         raise ConfigError(
             f"Required top-level section(s) missing from config.yaml: "
             f"{', '.join(sorted(missing))}. "
-            f"Run `cp config.yaml.example config.yaml` to reset."
+            f"Run `cp config.example.yaml config.yaml` to reset."
         )
 
 
