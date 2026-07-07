@@ -132,10 +132,18 @@ class BrainController:
         # Fallback heuristics based on intent type
         if intent_type_str == "SYSTEM_COMMAND":
             lower = text.lower()
+            if any(kw in lower for kw in ("shutdown", "shut down", "power off", "turn off")):
+                return "shutdown"
+            if any(kw in lower for kw in ("restart", "reboot")):
+                return "restart"
+            if any(kw in lower for kw in ("log off", "logoff", "sign out", "logout")):
+                return "log_off"
             if any(kw in lower for kw in ("open", "launch", "start")):
                 return "open_app"
-            if any(kw in lower for kw in ("kill", "stop", "close", "end")):
+            if any(kw in lower for kw in ("kill", "terminate", "force quit")):
                 return "kill_process"
+            if any(kw in lower for kw in ("close", "quit", "exit")):
+                return "close_app"
             if any(kw in lower for kw in ("cpu", "ram", "memory", "battery", "disk")):
                 return "get_stats"
             if any(kw in lower for kw in ("create", "make")):

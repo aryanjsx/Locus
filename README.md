@@ -1,12 +1,14 @@
 <div align="center">
 
-<img src="docs/assets/AURA.jpg" alt="AURA" width="800"/>
+<img src="docs/assets/AURA.jpg" alt="Kommy — AURA voice assistant" width="800"/>
 
-# AURA
+# Kommy
 
-### Your computer already has an AI. It just doesn't know it yet.
+### Local voice assistant · powered by AURA
 
-**Not another chatbot.** AURA is a system-level AI that lives on your machine, executes real actions, and never phones home.
+**AURA** — Autonomous Unified Response Architecture — is the offline, layered system underneath. **Kommy** is the persona you talk to ("Hey Kommy").
+
+**Not another chatbot.** Kommy lives on your machine, executes real actions through sandboxed executors, and never phones home.
 
 ![Build Status](https://github.com/aryanjsx/AURA/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/github/license/aryanjsx/AURA)
@@ -16,11 +18,11 @@
 
 **No cloud. No API keys. No subscriptions. No data leaving your machine. Ever.**
 
-[Get Started](#-getting-started) · [What It Can Do](#-what-aura-can-do) · [Architecture](#-architecture) · [Roadmap](#-roadmap) · [Contribute](#-contributing)
+[Get Started](#-getting-started) · [What It Can Do](#-what-kommy-can-do) · [Architecture](#-architecture) · [Roadmap](#-roadmap) · [Contribute](#-contributing)
 
 </div>
 
-**"Kommy"** — a phonetic evolution of "commy" (companion) turned into a proper name, distinct from the acronym pattern of AURA.
+> **Credibility status (2026-07-08):** Phase 2 adversarial audit — 20/20 violations verified fixed via Fix 13 pass (`scripts/fix13_verify.py`). Live end-to-end voice demo recording is tracked separately (see [Known gaps](#known-gaps)).
 
 ---
 
@@ -52,7 +54,7 @@ ChatGPT can't touch your filesystem. Copilot can't monitor your CPU. AutoGPT bur
 
 ---
 
-## What AURA Can Do
+## What Kommy Can Do
 
 ### Phase 1 — System Control (CLI)
 
@@ -72,39 +74,29 @@ Project 'my-app' created with src/ tests/ README.md .gitignore requirements.txt
 > run command git status
 ```
 
-### Phase 2 — Voice + Intelligence (Current)
+### Phase 2 — Voice + Intelligence (verified in tests)
 
-AURA now **hears you, thinks locally, speaks back, and executes real actions** — powered entirely by local models.
+Kommy hears you, classifies intent, runs commands through SafetyGate when destructive, streams LLM responses to TTS, and speaks back — all locally.
 
-```
-"Hey Kommy, create a folder named project on desktop"
-  → Wake word + command extracted in one step
-  → Intent: SYSTEM_COMMAND (regex, 0ms)
-  → Folder created instantly
-  → TTS: "Folder project created on Desktop."
+**Verified pipeline paths** (unit/integration tests, 2026-07-08):
 
-"Hey Kommy, what is Python?"
-  → Intent: GENERAL_KNOWLEDGE (regex, 0ms)
-  → Streams response from mistral:7b-instruct-q4_0
-  → TTS speaks first sentence in ~3s
-
-"Hey Kommy, open Chrome"
-  → Intent: SYSTEM_COMMAND
-  → Chrome opens immediately
-  → TTS: "Opening Chrome."
-
-[CTRL+SPACE] → "Write a Python function to sort a list"
-  → Intent: CODE_GENERATION
-  → Streams from deepseek-coder:7b-q4_0
-```
+| Utterance | Intent | SafetyGate | Output path |
+|---|---|---|---|
+| "What is Python?" | `GENERAL_KNOWLEDGE` | — | `llm_stream` → TTS |
+| "Write a function to sort a list" | `CODE_GENERATION` | — | `llm_stream` → TTS |
+| "Push my code to GitHub" | `DEV_TASK` | — | `llm_stream` → TTS |
+| "What routes does my project have?" | `PROJECT_CONTEXT` | — | `llm_stream` → TTS |
+| "What's the latest Node.js version?" | `REALTIME_QUERY` | — | `llm_stream` → TTS |
+| "Shutdown the computer" | `SYSTEM_COMMAND` | **Yes** (8s timeout) | Cancelled without confirm |
+| "Open Chrome" | `SYSTEM_COMMAND` | — | Executor dispatch |
 
 **Voice pipeline flow:**
 
 ```
-Wake ("Hey Kommy") → Command Extraction → Regex Intent (0ms) → Safety Gate → Execute / Stream LLM → TTS
+Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainController → SafetyGate (if destructive) → Execute / Stream LLM → TTS
 ```
 
-**System commands execute directly — no LLM round-trip:**
+**Destructive commands always confirm** (shutdown, restart, log off, close app, kill process, shell, git push, docker remove — see `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py`):
 
 | Voice Command | What Happens |
 |---|---|
@@ -115,19 +107,22 @@ Wake ("Hey Kommy") → Command Extraction → Regex Intent (0ms) → Safety Gate
 | "CPU" / "RAM" | Speaks current system usage |
 | "Shutdown" / "Restart" | Asks for confirmation → executes |
 
-**9 intent types** classified instantly via regex (no LLM call):
+**Intent classification** uses a two-tier router (`aura/core/intent_router.py`):
+
+1. **Fast regex** for obvious patterns (system commands, dev tasks, knowledge questions) — no LLM call
+2. **LLM fallback** for ambiguous input — 10s timeout, 3 retries, then `UNKNOWN`
 
 | Intent | Routed To | Example |
 |---|---|---|
-| `SYSTEM_COMMAND` | SystemExecutor | "Create folder", "Open Chrome", "Kill process" |
-| `FILE_OPERATION` | SystemExecutor | "Rename file", "Move file to desktop" |
-| `CODE_GENERATION` | deepseek-coder:7b-q4_0 | "Write a REST endpoint in FastAPI" |
-| `GENERAL_KNOWLEDGE` | mistral:7b-instruct-q4_0 (streamed) | "Explain Docker networking" |
-| `DEV_TASK` | mistral:7b-instruct-q4_0 | "Push my code to GitHub" |
-| `VISION_TASK` | llava:7b | "What's on my screen?" |
-| `PROJECT_CONTEXT` | mistral:7b-instruct-q4_0 | "What routes does my project have?" |
-| `REALTIME_QUERY` | mistral:7b-instruct-q4_0 | "What's the latest Node.js version?" |
+| `SYSTEM_COMMAND` | SystemExecutor / SystemMonitor | "Open Chrome", "Shutdown", "CPU" |
+| `CODE_GENERATION` | LLM stream (deepseek-coder) | "Write a REST endpoint in FastAPI" |
+| `GENERAL_KNOWLEDGE` | LLM stream (mistral) | "Explain Docker networking" |
+| `DEV_TASK` | LLM stream or ShellExecutor | "Push my code to GitHub" |
+| `VISION_TASK` | Vision executor (Phase 4) | "What's on my screen?" |
+| `PROJECT_CONTEXT` | LLM stream + RAG flag | "What routes does my project have?" |
+| `REALTIME_QUERY` | LLM stream | "What's the latest Node.js version?" |
 | `DEACTIVATE_SESSION` | Session controller | "Go to sleep", "That's all" |
+| `UNKNOWN` | LLM stream + RAG | Unrecognized input after LLM retries |
 
 ---
 
@@ -168,16 +163,16 @@ Wake ("Hey Kommy") → Command Extraction → Regex Intent (0ms) → Safety Gate
 | **2** | openwakeword | Lightweight ONNX model (auto-fallback if Whisper unavailable) |
 | **3** | CTRL+SPACE | Keyboard hotkey — always works alongside any voice tier |
 
-**Performance optimizations:**
-- **Single-shot wake + command** — "Hey Kommy, what is Python?" is captured in one recording, no second prompt
-- **Regex-only intent classification** — 0ms classification, no LLM round-trip
-- **Streaming LLM responses** — TTS speaks the first sentence while the model is still generating
-- **Model pre-warming** — primary model is loaded into RAM at startup for instant inference
-- **System commands bypass LLM entirely** — file/folder/app operations execute directly
+**Performance characteristics (measured in tests, not marketing claims):**
+- **Single-shot wake + command** — "Hey Kommy, what is Python?" captured in one recording when wake tier extracts inline command
+- **Regex fast-path** — common intents classified without LLM round-trip
+- **Streaming LLM responses** — `_stream_to_tts()` sends sentence chunks to TTS as tokens arrive
+- **Model pre-warming** — primary model loaded at startup when Ollama is reachable
+- **System commands** — executor-backed intents bypass LLM when BrainController resolves a concrete action
 
 **Key design decisions:**
 - The main process **never imports plugin code** — plugins run in isolated worker subprocesses over JSON IPC
-- **SafetyGate** enforces voice confirmation for destructive ops (shutdown, kill, delete) with timeout-based denial
+- **SafetyGate** (`aura/security/safety_gate.py`) enforces voice confirmation for destructive ops with 8s timeout-based denial
 - **EventBus** connects all modules via typed events — no direct coupling
 - **ModeMonitor** detects online/offline and switches TTS engines automatically
 - **TTS failover chain:** Edge TTS (online) → Piper (offline) → pyttsx3 (fallback)
@@ -264,30 +259,37 @@ AURA/
 │   ├── core/
 │   │   ├── config_loader.py    # YAML config with strict validation
 │   │   ├── ollama_client.py    # Ollama API client with streaming
-│   │   ├── intent_router.py    # Regex-based intent classification
+│   │   ├── intent_router.py    # Two-tier intent classification (regex + LLM)
+│   │   ├── llm_brain.py        # Plan builder + model selector (not LLM caller)
 │   │   ├── command_engine.py   # Intent → CommandPlan → Executor dispatch
-│   │   ├── safety_gate.py      # Voice confirmation for destructive ops
-│   │   ├── event_bus.py        # Singleton pub/sub event system
 │   │   ├── session_controller.py # Session lifecycle (active/sleep/wake)
+│   │   ├── event_bus.py        # Singleton pub/sub event system
 │   │   ├── errors.py           # Custom exception hierarchy
 │   │   └── ...
+│   ├── security/
+│   │   ├── safety_gate.py      # Voice + CLI confirmation, audit logging
+│   │   └── ...                 # Sandbox, audit, policy enforcement
 │   ├── executors/
 │   │   ├── system_executor.py  # OS-level: open/close apps, volume, shutdown
 │   │   ├── shell_executor.py   # Allowlisted shell commands (git, npm, docker)
 │   │   └── system_monitor.py   # CPU, RAM, battery, disk, processes
 │   ├── schemas/
-│   │   ├── intent.py           # IntentObject, IntentType enum
-│   │   └── command.py          # CommandPlan, ExecutionResult, ExecutorType
+│   │   ├── intent.py           # IntentObject, IntentType enum (canonical)
+│   │   └── command.py          # CommandPlan, ExecutionResult, DESTRUCTIVE_ACTIONS
 │   ├── modules/
 │   │   ├── stt.py              # Whisper speech-to-text engine
 │   │   ├── tts.py              # Multi-engine text-to-speech
-│   │   └── wake_word.py        # Whisper-based wake word + CTRL+SPACE
+│   │   └── wake_word.py        # Whisper wake word + CTRL+SPACE fallback
 │   ├── utils/
+│   │   ├── mic_lock.py         # Shared mic mutex (wake word vs SafetyGate STT)
 │   │   ├── app_registry.py     # Application name → executable resolution
-│   │   ├── audio_input.py      # Microphone device resolution
 │   │   └── mode_monitor.py     # Online/offline detection daemon
-│   ├── security/               # Sandbox, audit, policy enforcement
-│   └── runtime/                # Execution engine, planner, worker IPC
+│   └── runtime/                # CLI execution engine, planner, worker IPC
+├── docs/
+│   ├── decisions/naming.md     # Kommy vs AURA naming ADR
+│   └── assets/                 # README / site media
+├── AURA_ENGINEERING_SPEC.md    # Phase 2 engineering contract
+├── CHANGELOG.md
 ├── plugins/
 │   ├── system/                 # File, process, shell operations
 │   ├── git/                    # Git automation
@@ -302,10 +304,15 @@ AURA/
 ├── tests/
 │   ├── test_phase2_audit_part1.py  # EventBus, ModeMonitor, Ollama, Router
 │   ├── test_phase2_audit_part2.py  # STT, WakeWord, TTS, Config, Safety
-│   ├── test_system_executor.py     # SystemExecutor, ShellExecutor, SafetyGate
+│   ├── test_destructive_gate.py    # DESTRUCTIVE_ACTIONS → SafetyGate (all pairs)
+│   ├── test_voice_destructive_path.py  # Voice utterances → SafetyGate
+│   ├── test_safety_gate.py         # Confirmation tokens, timeout, audit
+│   ├── test_system_executor.py     # SystemExecutor, ShellExecutor
 │   └── fixtures/               # Test audio files, bad config
-├── scripts/                    # Diagnostic and integration test scripts
-├── config.yaml                 # Central configuration
+├── scripts/
+│   ├── fix13_verify.py         # Fix 13 — 20-violation verification pass
+│   └── phase2_integration_test.py
+├── config.example.yaml         # Tracked template (copy to config.yaml)
 ├── main.py                     # Phase 2 voice pipeline entry point
 └── requirements.txt
 ```
@@ -314,25 +321,38 @@ AURA/
 
 ## Test Suite
 
-The adversarial audit suite covers every module with both happy-path and edge-case tests:
+**620 tests passing** (4 skipped) as of 2026-07-08. Run: `python -m pytest tests/ -q`
 
-| Section | Tests | Status |
-|---|---|---|
-| EventBus (happy + adversarial) | 14 | All pass |
-| ModeMonitor (happy + adversarial) | 7 | All pass |
-| OllamaClient (happy + adversarial) | 8 | All pass |
-| IntentRouter + IntentObject | 13 | All pass |
-| STTEngine (happy + adversarial) | 13 | All pass |
-| WakeWordListener (happy + adversarial) | 11 | All pass |
-| TTSEngine (happy + adversarial) | 9 | All pass |
-| SystemExecutor + ShellExecutor | — | In progress |
-| SafetyGate | — | In progress |
-| Config validation | 2 | All pass |
-| Safety (static analysis) | 5 | All pass |
-| Pipeline E2E | 1 | All pass |
-| Regression guards | 5 | All pass |
+| Section | Tests | Status | Audit contract covered |
+|---|---|---|---|
+| EventBus (happy + adversarial) | 14 | Pass | Thread safety, handler isolation |
+| ModeMonitor (happy + adversarial) | 7 | Pass | ONLINE/OFFLINE transitions |
+| OllamaClient (happy + adversarial) | 8 | Pass | Retry count, unavailable error |
+| IntentRouter + IntentObject | 13 | Pass | Schema fields, two-tier classify |
+| STTEngine (happy + adversarial) | 13 | Pass | Never raises, concurrent isolation |
+| WakeWordListener (happy + adversarial) | 11 | Pass | Non-blocking start, mic errors |
+| TTSEngine (happy + adversarial) | 9 | Pass | Queue, interrupt, fallback chain |
+| SystemExecutor + ShellExecutor | 27 | Pass | Actions, shell allowlist |
+| SafetyGate | 14 | Pass | Tokens, timeout, audit on CLI path |
+| Destructive gate (all DESTRUCTIVE_ACTIONS) | parametric | Pass | Re-derives `is_destructive` |
+| Voice destructive path | 4 | Pass | shutdown/restart/log_off/close_app utterances |
+| SessionController | 12 | Pass | Lifecycle, inactivity, mic pause |
+| Config validation | 12 | Pass | Required keys, env overrides, `config.example.yaml` |
+| Safety (static analysis) | 5 | Pass | No shell=True, eval/exec, subprocess f-strings |
+| Regression guards | 5 | Pass | Singleton bus, layer boundaries |
 
-**Security verified:** No `shell=True`, no `eval`/`exec`, no subprocess string injection, no audio persisted to disk, all layer boundaries enforced.
+**Security verified (static + unit tests):** `shell=True` = 0 and `eval(`/`exec(` = 0 in `aura/` production code; subprocess uses list form; STTEngine does not write recordings to disk; schema consolidation confirmed. Layer-boundary enforcement is tested via import guards in `test_phase2_audit_part2.py`.
+
+---
+
+## Known gaps
+
+| Gap | Status |
+|---|---|
+| Live wake-word → audible TTS screen recording for README | Not yet recorded — requires manual capture session |
+| GitHub Pages demo embed | Pending live demo clip |
+| macOS/Linux wake-word CI matrix | Tracked in [#2](https://github.com/aryanjsx/AURA/issues/2) |
+| Voice-path SafetyGate audit-log assertions | Tracked in [#3](https://github.com/aryanjsx/AURA/issues/3) |
 
 ---
 
@@ -342,7 +362,7 @@ The adversarial audit suite covers every module with both happy-path and edge-ca
 |---|---|---|
 | **Phase 0 — Core Infrastructure** | Event bus, config, registry, CLI, execution backbone | Done |
 | **Phase 1 — System Plugin** | File/process/npm operations, sandbox, permissions, audit chain | Done |
-| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification, executors, safety gate | Done |
+| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification, executors, safety gate | Done — 20/20 audit violations verified (Fix 13, 2026-07-08) |
 | **Phase 3 — Dev Tools** | Git automation, Docker lifecycle, browser automation | Next |
 | **Phase 4 — Vision** | Screen capture, OCR, visual reasoning with LLaVA | Planned |
 | **Phase 5 — GUI Dashboard** | PyQt6 desktop interface with live command log | Planned |
@@ -373,7 +393,7 @@ We're building something big and we want you in.
 3. Commit with [Conventional Commits](https://www.conventionalcommits.org/) (`feat(core): add amazing feature`)
 4. Push and open a Pull Request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Check out [open issues](https://github.com/aryanjsx/AURA/issues) — look for `good first issue` and `help wanted`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Check [open issues](https://github.com/aryanjsx/AURA/issues) — starter tasks tagged `good first issue` ([#2](https://github.com/aryanjsx/AURA/issues/2)) and `help wanted` ([#3](https://github.com/aryanjsx/AURA/issues/3)).
 
 **Active areas where we need help:**
 - Plugin development (Git, Docker, Browser, Gmail, Spotify)
@@ -396,9 +416,11 @@ It takes one second and tells us you believe AI should be **owned, not rented**.
 
 <div align="center">
 
-**AURA — Autonomous Unified Response Architecture**
+**Kommy** — local voice assistant · **AURA** — Autonomous Unified Response Architecture
 
 Built offline. Powered locally. Yours completely.
+
+See [CHANGELOG.md](CHANGELOG.md) · [Naming ADR](docs/decisions/naming.md)
 
 [GitHub](https://github.com/aryanjsx/AURA) · [Issues](https://github.com/aryanjsx/AURA/issues) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
 

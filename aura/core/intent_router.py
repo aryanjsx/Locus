@@ -60,22 +60,33 @@ _FAST_PATTERNS: list[tuple[re.Pattern, IntentType, dict[str, str]]] = [
      IntentType.SYSTEM_COMMAND, {}),
     (re.compile(r"\b(open|launch|start)\b\s+(.+)", re.I),
      IntentType.SYSTEM_COMMAND, {"action": "open_app"}),
-    (re.compile(r"\b(kill|stop|close|end)\b\s+(?:the\s+)?(?:process\s+)?(.+)", re.I),
+    (re.compile(r"\b(shutdown|shut down|power off|turn off)\b", re.I),
+     IntentType.SYSTEM_COMMAND, {"action": "shutdown"}),
+    (re.compile(r"\b(restart|reboot)\b", re.I),
+     IntentType.SYSTEM_COMMAND, {"action": "restart"}),
+    (re.compile(r"\b(log off|logoff|sign out|logout)\b", re.I),
+     IntentType.SYSTEM_COMMAND, {"action": "log_off"}),
+    (re.compile(r"\b(close|quit|exit)\s+(?:the\s+)?(?:app\s+)?(.+)", re.I),
+     IntentType.SYSTEM_COMMAND, {"action": "close_app"}),
+    (re.compile(r"\b(kill|terminate|force quit)\s+(?:the\s+)?(?:process\s+)?(.+)", re.I),
      IntentType.SYSTEM_COMMAND, {"action": "kill_process"}),
     (re.compile(r"\b(screenshot|volume|brightness)\b", re.I),
      IntentType.SYSTEM_COMMAND, {}),
     # CPU/RAM/system stats
     (re.compile(r"\b(cpu|processor|ram|memory|battery|disk)\b", re.I),
      IntentType.SYSTEM_COMMAND, {"action": "get_stats"}),
+    # Dev tasks — before CODE_GENERATION so "push my code" matches push, not code
+    (re.compile(r"\b(git |docker |npm |pip |yarn |push|pull|commit|deploy|build)\b", re.I),
+     IntentType.DEV_TASK, {}),
     # Code generation
     (re.compile(r"\b(write|code|function|class|implement|refactor|debug|fix bug|script)\b.*\b(in|for|using|with)?\b", re.I),
      IntentType.CODE_GENERATION, {}),
-    # Dev tasks
-    (re.compile(r"\b(git |docker |npm |pip |yarn |push|pull|commit|deploy|build)\b", re.I),
-     IntentType.DEV_TASK, {}),
     # Vision
     (re.compile(r"\b(screen|see|look at|what.s on my|describe my)\b", re.I),
      IntentType.VISION_TASK, {}),
+    # Project context
+    (re.compile(r"\b(what routes|my project|this project|codebase|in my repo|project have)\b", re.I),
+     IntentType.PROJECT_CONTEXT, {}),
     # Realtime
     (re.compile(r"\b(latest|current|today|price|stock|weather|news)\b", re.I),
      IntentType.REALTIME_QUERY, {}),
