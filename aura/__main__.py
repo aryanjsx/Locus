@@ -22,5 +22,5 @@ if __name__ == "__main__":
         raise
     except Exception as _exc:
         print(f"[AURA] Startup error: {_exc}", file=sys.stderr)
-        print("       Check config.yaml — run `cp config.yaml.example config.yaml` to reset.", file=sys.stderr)
+        print("       Check config.yaml — run `cp config.example.yaml config.yaml` to reset.", file=sys.stderr)
         raise SystemExit(1)

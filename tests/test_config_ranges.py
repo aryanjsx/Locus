@@ -22,7 +22,7 @@ def _write(path: Path, body: str) -> None:
 def _reload_from(tmp_path: Path, body: str, monkeypatch: pytest.MonkeyPatch):
     cfg = tmp_path / "config.yaml"
     _write(cfg, body)
-    example = tmp_path / "config.yaml.example"
+    example = tmp_path / "config.example.yaml"
     _write(example, body)  # so reload never falls back elsewhere
 
     monkeypatch.setattr(config_loader, "_CONFIG_PATH", cfg)

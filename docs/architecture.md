@@ -122,7 +122,7 @@ The LLM backend abstraction layer. `base.py` defines the `LLMBackend` ABC with `
 
 ### core/config_loader.py
 
-Loads settings from `config.yaml` (user-local, gitignored) with fallback to `config.yaml.example` (tracked template). Supports dot-notation access (`get("logging.level")`), deep-merges user YAML into built-in defaults, applies **environment overrides**, and caches the result.
+Loads settings from `config.yaml` (user-local, gitignored) with fallback to `config.example.yaml` (tracked template). Supports dot-notation access (`get("logging.level")`), deep-merges user YAML into built-in defaults, applies **environment overrides**, and caches the result.
 
 Optional environment variables (applied after YAML merge):
 

@@ -78,8 +78,9 @@ rate_limit:
 
 # [REQUIRED]
 safety:
-  confirm_timeout: 8
+  confirmation_timeout: 8
   auto_confirm: false
+  audit_log: "logs/safety_audit.log"
 
 # [REQUIRED]
 audit:
@@ -106,9 +107,10 @@ stt:
   max_recording: 30
 
 tts:
-  engine: "piper"
-  voice: "en_US-lessac-medium"
-  fallback: "pyttsx3"
+  offline_engine: "piper"
+  online_engine:  "edge-tts"
+  piper_voice:    "en_US-lessac-medium"
+  edge_voice:     "en-US-GuyNeural"
 
 routing:
   complexity_threshold: 50
@@ -117,8 +119,18 @@ routing:
   fallback_model: "mistral:7b-instruct-q4_0"
   intent_timeout_seconds: 10
   intent_max_retries: 3
+  fast_confidence: 0.85       # confidence assigned to regex fast-path matches
+  fallback_confidence: 0.3    # confidence when LLM classification fails → UNKNOWN
+
+wake_word:
+  engine: "whisper"
+  phrases:
+    - "hey kommy"
+    - "kommy"
+  no_speech_threshold: 0.3    # Whisper VAD threshold for wake-word transcription
 
 ollama:
   base_url: "http://localhost:11434"
   timeout: 60
   retries: 3
+  health_check_timeout: 5     # seconds for /api/tags reachability probe

@@ -252,6 +252,9 @@ class SafetyGate:
 
     def check(self, command_plan: Any) -> bool:
         """Voice-based confirmation for the command engine pipeline."""
+        if not command_plan.is_destructive and not command_plan.requires_confirm:
+            return True
+
         action = command_plan.action
         params = command_plan.params
         executor = command_plan.executor

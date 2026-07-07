@@ -267,7 +267,6 @@ AURA/
 │   │   ├── intent_router.py    # Regex-based intent classification
 │   │   ├── command_engine.py   # Intent → CommandPlan → Executor dispatch
 │   │   ├── safety_gate.py      # Voice confirmation for destructive ops
-│   │   ├── voice_executor.py   # Direct system command execution (legacy)
 │   │   ├── event_bus.py        # Singleton pub/sub event system
 │   │   ├── session_controller.py # Session lifecycle (active/sleep/wake)
 │   │   ├── errors.py           # Custom exception hierarchy
