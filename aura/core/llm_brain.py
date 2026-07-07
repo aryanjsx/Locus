@@ -30,6 +30,7 @@ import logging
 from typing import Any
 
 from aura.schemas.command import CommandPlan, ExecutorType
+from aura.utils.mode_monitor import mode_monitor
 
 logger = logging.getLogger("aura.brain")
 
@@ -81,6 +82,25 @@ class BrainController:
             intent_type_str, ("general", ExecutorType.LLM_ONLY, True)
         )
 
+        prompt_text = intent_object.cleaned_text
+        staleness_warning = False
+
+        # REALTIME_QUERY: online → BROWSER.search; offline → LLM + staleness note
+        if intent_type_str == "REALTIME_QUERY":
+            routing_cfg = self._config.get("routing", {})
+            if mode_monitor.is_online():
+                executor = ExecutorType.BROWSER
+                requires_rag = False
+            else:
+                executor = ExecutorType.LLM_ONLY
+                requires_rag = False
+                if routing_cfg.get("realtime_warning", True):
+                    prompt_text = (
+                        "Note: You are offline. Information may be outdated.\n\n"
+                        + prompt_text
+                    )
+                    staleness_warning = True
+
         model = self._models.get(model_key, self._models.get("general", ""))
         if intent_object.model_override:
             model = intent_object.model_override
@@ -91,10 +111,13 @@ class BrainController:
         # Build params
         params: dict[str, Any] = {
             "model": model,
-            "prompt": intent_object.cleaned_text,
+            "prompt": prompt_text,
             "raw_text": intent_object.raw_text,
             "requires_rag": requires_rag or intent_object.requires_rag,
+            "staleness_warning": staleness_warning,
         }
+        if executor == ExecutorType.BROWSER:
+            params["query"] = intent_object.cleaned_text
         params.update(intent_object.entities)
 
         plan = CommandPlan(
@@ -164,5 +187,7 @@ class BrainController:
             return "generate_code"
         elif intent_type_str == "VISION_TASK":
             return "vision_analyze"
+        elif intent_type_str == "REALTIME_QUERY":
+            return "search"
         else:
             return "llm_respond"

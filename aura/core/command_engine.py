@@ -14,6 +14,7 @@ from aura.core.event_bus import bus, EventType
 from aura.executors.system_executor import SystemExecutor
 from aura.executors.system_monitor import SystemMonitor
 from aura.executors.shell_executor import ShellExecutor
+from aura.executors.browser_executor import BrowserExecutor
 
 logger = logging.getLogger("aura.command_engine")
 
@@ -33,6 +34,7 @@ class CommandEngine:
         self._system  = SystemExecutor(config)
         self._monitor = SystemMonitor(config)
         self._shell   = ShellExecutor(config)
+        self._browser = BrowserExecutor(config)
 
     def receive_safety_confirmation(self, spoken_text: str) -> None:
         """
@@ -255,8 +257,11 @@ class CommandEngine:
                     "model": plan.params.get("model", ""),
                     "prompt": plan.params.get("prompt", ""),
                     "requires_rag": plan.params.get("requires_rag", False),
+                    "staleness_warning": plan.params.get("staleness_warning", False),
                 },
             )
+        if executor == ExecutorType.BROWSER:
+            return self._browser.run(plan.action, plan.params)
         if executor == ExecutorType.SESSION:
             bus.emit(EventType.SESSION_ENDED, {"reason": "manual_voice_command"})
             return ExecutionResult(

@@ -53,6 +53,7 @@ def main() -> int:
     except Exception as e:
         fail(f"sounddevice query failed: {e}")
 
+    # Tier 2 fallback uses openWakeWord's stock hey_jarvis model — not "Hey Kommy".
     section("openWakeWord models")
     try:
         import openwakeword
@@ -101,6 +102,7 @@ def main() -> int:
         except ImportError:
             warn("tflite-runtime not installed — using ONNX (expected on Python 3.14)")
 
+        # hey_jarvis is the OWW stock model filename — unrelated to product wake phrase.
         model = Model(wakeword_models=["hey_jarvis"], inference_framework=fw)
         silence = np.zeros(1280, dtype=np.int16)
         for _ in range(25):
@@ -129,6 +131,7 @@ def main() -> int:
     try:
         from openwakeword.model import Model
 
+        # hey_jarvis is the OWW stock model filename — unrelated to product wake phrase.
         model = Model(wakeword_models=["hey_jarvis"], inference_framework=fw)
         sr = 16000
         chunk = 1280
@@ -173,18 +176,23 @@ def main() -> int:
         else:
             ok(f"Mic receiving audio (rms peak {rms_max:.4f})")
 
+        # "Hey Jarvis" is openWakeWord's built-in hey_jarvis ONNX model name —
+        # NOT the product wake phrase ("Hey Kommy"). This script exercises Tier 2
+        # OWW fallback only; main.py Tier 1 uses Whisper + "hey kommy".
         ok(f"Live raw score peak (5s): {raw_peak:.3f} (need ~{threshold}+ for Hey Jarvis)")
         if triggers > 0:
             ok(f"Wake triggered {triggers} time(s) during test")
         elif raw_peak < threshold * 0.5:
             warn(
-                "No wake trigger and low scores — say 'Hey Jarvis' during main.py; "
-                "or lower oww_threshold / fix input_device"
+                # Intentionally "Hey Jarvis" — matches hey_jarvis model above, not Kommy.
+                "No wake trigger and low scores — say 'Hey Jarvis' while running this "
+                "OWW diagnostic (not main.py); or lower oww_threshold / fix input_device"
             )
         elif raw_peak >= threshold * 0.8:
             warn(
+                # Intentionally "Hey Jarvis" — matches hey_jarvis model above, not Kommy.
                 f"Scores near threshold ({raw_peak:.3f}) but patience not met — "
-                "try clearer 'Hey Jarvis' + short pause"
+                "try clearer 'Hey Jarvis' + short pause (OWW Tier 2 test phrase)"
             )
         else:
             ok("No false trigger in 5s sample")

@@ -186,7 +186,7 @@ class IntentRouter:
                     cleaned_text=cleaned,
                     entities=entities,
                     model_override=model_override,
-                    requires_rag=False,
+                    requires_rag=intent_type in (IntentType.PROJECT_CONTEXT,),
                     confidence=self._fast_confidence,
                 )
                 self._event_bus.emit(EventType.INTENT_CLASSIFIED, {

@@ -1,6 +1,8 @@
-# 🤝 Contributing to AURA
+# 🤝 Contributing to Kommy (AURA)
 
-First off — thank you for considering contributing to AURA! Whether it's fixing a typo, proposing a feature, or building an entire module, every contribution moves the project forward.
+First off — thank you for considering contributing. Whether it's fixing a typo, proposing a feature, or building an entire module, every contribution moves the project forward.
+
+**Kommy** is the voice assistant users talk to. **AURA** is the offline architecture underneath. The repo is tagged on GitHub for discoverability — if you found us via `voice-assistant`, `ollama`, `whisper`, `local-llm`, or similar topics, jump to [Contribute by topic](#contribute-by-topic) below.
 
 AURA is a fully offline AI developer assistant. We value clean code, clear documentation, and a welcoming community.
 
@@ -69,6 +71,26 @@ Then open a Pull Request against `main`. Fill out the [PR template](.github/PULL
 
 ---
 
+## Contribute by topic
+
+GitHub topics on this repo mirror real modules. Pick the row that matches your experience:
+
+| Topic | Directory | Good first tasks |
+|---|---|---|
+| `python`, `open-source` | anywhere | docs, tests, type hints, CI |
+| `voice-assistant`, `whisper`, `kommy` | `aura/modules/stt.py`, `wake_word.py` | cross-platform wake-word tests ([#2](https://github.com/aryanjsx/AURA/issues/2)) |
+| `ollama`, `local-llm`, `ai` | `aura/core/ollama_client.py`, `llm_brain.py`, `intent_router.py` | router prompts, streaming edge cases |
+| `piper-tts`, `offline-ai` | `aura/modules/tts.py` | TTS engine config, failover tests |
+| `automation`, `developer-tools` | `aura/executors/`, `plugins/system/` | new allowlisted commands |
+| `gitpython` | `plugins/git/` | Phase 3 git plugin |
+| `docker-sdk` | `plugins/docker/` | Phase 3 docker plugin |
+| `chromadb` | `plugins/memory/` | Phase 6 memory schema |
+| `pyqt6` | `aura/gui/` (planned) | Phase 5 dashboard |
+
+**Claim work:** comment on an issue ("I'd like to work on this") or open a PR linked to an issue. Unclaimed ideas welcome via [Feature Request](https://github.com/aryanjsx/AURA/issues/new?template=feature_request.md).
+
+---
+
 ## Where to Contribute
 
 Each module has a clear home in the codebase:
@@ -93,11 +115,12 @@ Each module has a clear home in the codebase:
 - `.gitignore` and project config refinements
 - Bug reports and fixes against the secure-execution core
 
-#### Phase 2 — In Progress (active focus)
+#### Phase 2 — Voice + Intelligence (maintenance + polish)
 - Whisper STT integration and optimization
 - Ollama prompt engineering for developer tasks
 - Piper TTS voice configuration
-- LLM tool-use orchestration on top of the existing command registry
+- SafetyGate audit coverage ([#3](https://github.com/aryanjsx/AURA/issues/3))
+- Cross-platform wake-word and mic tests ([#2](https://github.com/aryanjsx/AURA/issues/2))
 
 #### Phase 3+ — Future (planned)
 - Git automation edge cases

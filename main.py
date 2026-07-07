@@ -33,6 +33,7 @@ from aura.modules.tts import TTSEngine
 from aura.modules.wake_word import WakeWordListener
 from aura.security.safety_gate import SafetyGate
 from aura.utils.mode_monitor import mode_monitor
+from aura.memory.context_retriever import augment_prompt_with_rag, retrieve_context
 
 BANNER = r"""
     ___   __  ______  ___
@@ -236,8 +237,21 @@ def startup() -> None:
                 model = exec_result.data.get("model", "")
                 prompt = exec_result.data.get("prompt", "")
                 if model and prompt:
+                    if exec_result.data.get("requires_rag"):
+                        chunks = retrieve_context(prompt, config, ollama)
+                        if chunks:
+                            prompt = augment_prompt_with_rag(prompt, chunks)
+                            print(f"[PIPELINE] RAG: augmented prompt with {len(chunks)} chunk(s)")
+                        else:
+                            print("[PIPELINE] RAG: no context retrieved (continuing without)")
+
                     system_prompt = _VOICE_SYSTEM_PROMPT
-                    if intent.intent_type == IntentType.CODE_GENERATION:
+                    if exec_result.data.get("staleness_warning"):
+                        system_prompt = (
+                            "You are offline. Warn that information may be outdated. "
+                            "Answer in 1 sentence."
+                        )
+                    elif intent.intent_type == IntentType.CODE_GENERATION:
                         system_prompt = "Summarize the code solution in 1 sentence."
                     print(f"[PIPELINE] Streaming from {model}...")
                     _stream_to_tts(ollama, tts, model, prompt, system_prompt)

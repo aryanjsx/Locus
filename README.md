@@ -18,11 +18,13 @@
 
 **No cloud. No API keys. No subscriptions. No data leaving your machine. Ever.**
 
+**Topics:** `python` · `open-source` · `voice-assistant` · `kommy` · `local-llm` · `ollama` · `whisper` · `offline-ai` · `automation` · `developer-tools` · `piper-tts` · `chromadb` · `pyqt6` · `gitpython` · `docker-sdk` · `ai`
+
 [Get Started](#-getting-started) · [What It Can Do](#-what-kommy-can-do) · [Architecture](#-architecture) · [Roadmap](#-roadmap) · [Contribute](#-contributing)
 
 </div>
 
-> **Credibility status (2026-07-08):** Phase 2 adversarial audit — 20/20 violations verified fixed via Fix 13 pass (`scripts/fix13_verify.py`). Live end-to-end voice demo recording is tracked separately (see [Known gaps](#known-gaps)).
+> **Credibility status (2026-07-08):** Phase 2 adversarial audit — 20/20 violations verified fixed (Fix 13 + independent gap-closure pass: dead-reference sweep, per-action SafetyGate traces, per-intent LLM/TTS traces). **629 tests passing.** Live end-to-end voice demo recording is tracked separately (see [Known gaps](#known-gaps)).
 
 ---
 
@@ -84,16 +86,20 @@ Kommy hears you, classifies intent, runs commands through SafetyGate when destru
 |---|---|---|---|
 | "What is Python?" | `GENERAL_KNOWLEDGE` | — | `llm_stream` → TTS |
 | "Write a function to sort a list" | `CODE_GENERATION` | — | `llm_stream` → TTS |
-| "Push my code to GitHub" | `DEV_TASK` | — | `llm_stream` → TTS |
-| "What routes does my project have?" | `PROJECT_CONTEXT` | — | `llm_stream` → TTS |
-| "What's the latest Node.js version?" | `REALTIME_QUERY` | — | `llm_stream` → TTS |
+| "Push my code to GitHub" | `DEV_TASK` | — | `ShellExecutor` → `tts.speak(output)` |
+| "What routes does my project have?" | `PROJECT_CONTEXT` | — | RAG hook → `llm_stream` → TTS |
+| "What's the latest Node.js version?" (online) | `REALTIME_QUERY` | — | `BrowserExecutor.search` → TTS |
+| "What's the latest Node.js version?" (offline) | `REALTIME_QUERY` | — | `llm_stream` + staleness warning → TTS |
 | "Shutdown the computer" | `SYSTEM_COMMAND` | **Yes** (8s timeout) | Cancelled without confirm |
+| "Restart the computer" | `SYSTEM_COMMAND` | **Yes** | Cancelled without confirm |
+| "Log off the computer" | `SYSTEM_COMMAND` | **Yes** | Cancelled without confirm |
+| "Close Chrome" | `SYSTEM_COMMAND` | **Yes** | Cancelled without confirm |
 | "Open Chrome" | `SYSTEM_COMMAND` | — | Executor dispatch |
 
 **Voice pipeline flow:**
 
 ```
-Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainController → SafetyGate (if destructive) → Execute / Stream LLM → TTS
+Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainController → SafetyGate (if destructive) → Execute / RAG augment / Stream LLM / Browser search → TTS
 ```
 
 **Destructive commands always confirm** (shutdown, restart, log off, close app, kill process, shell, git push, docker remove — see `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py`):
@@ -117,12 +123,12 @@ Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainCo
 | `SYSTEM_COMMAND` | SystemExecutor / SystemMonitor | "Open Chrome", "Shutdown", "CPU" |
 | `CODE_GENERATION` | LLM stream (deepseek-coder) | "Write a REST endpoint in FastAPI" |
 | `GENERAL_KNOWLEDGE` | LLM stream (mistral) | "Explain Docker networking" |
-| `DEV_TASK` | LLM stream or ShellExecutor | "Push my code to GitHub" |
+| `DEV_TASK` | ShellExecutor (allowlisted git/npm/docker) | "Push my code to GitHub" |
 | `VISION_TASK` | Vision executor (Phase 4) | "What's on my screen?" |
-| `PROJECT_CONTEXT` | LLM stream + RAG flag | "What routes does my project have?" |
-| `REALTIME_QUERY` | LLM stream | "What's the latest Node.js version?" |
+| `PROJECT_CONTEXT` | RAG hook → LLM stream | "What routes does my project have?" |
+| `REALTIME_QUERY` | Browser search (online) or LLM + staleness warning (offline) | "What's the latest Node.js version?" |
 | `DEACTIVATE_SESSION` | Session controller | "Go to sleep", "That's all" |
-| `UNKNOWN` | LLM stream + RAG | Unrecognized input after LLM retries |
+| `UNKNOWN` | RAG hook → LLM stream | Unrecognized input after LLM retries |
 
 ---
 
@@ -143,8 +149,8 @@ Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainCo
 │  SafetyGate · Voice Confirmation · Audit Chain      │
 ├─────────────────────────────────────────────────────┤
 │                EXECUTION LAYER                       │
-│  SystemExecutor · ShellExecutor · SystemMonitor     │
-│  CommandPlan → Executor Dispatch → Result           │
+│  SystemExecutor · ShellExecutor · BrowserExecutor   │
+│  SystemMonitor · CommandPlan → Dispatch → Result    │
 ├─────────────────────────────────────────────────────┤
 │                  PLUGIN LAYER                        │
 │  System · Git · Docker · Browser · Gmail · Spotify   │
@@ -174,7 +180,8 @@ Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainCo
 - The main process **never imports plugin code** — plugins run in isolated worker subprocesses over JSON IPC
 - **SafetyGate** (`aura/security/safety_gate.py`) enforces voice confirmation for destructive ops with 8s timeout-based denial
 - **EventBus** connects all modules via typed events — no direct coupling
-- **ModeMonitor** detects online/offline and switches TTS engines automatically
+- **ModeMonitor** detects online/offline — switches TTS engines and routes `REALTIME_QUERY` (browser search vs offline LLM)
+- **RAG hook** (`aura/memory/context_retriever.py`) augments `PROJECT_CONTEXT` / `UNKNOWN` prompts when ChromaDB has stored context
 - **TTS failover chain:** Edge TTS (online) → Piper (offline) → pyttsx3 (fallback)
 - **Wake word shares the Whisper model** with STT — zero additional memory cost
 - **Typed schemas** — `IntentObject`, `CommandPlan`, `ExecutionResult` enforce contracts between layers
@@ -272,7 +279,10 @@ AURA/
 │   ├── executors/
 │   │   ├── system_executor.py  # OS-level: open/close apps, volume, shutdown
 │   │   ├── shell_executor.py   # Allowlisted shell commands (git, npm, docker)
+│   │   ├── browser_executor.py # HTTPS live search for REALTIME_QUERY (online)
 │   │   └── system_monitor.py   # CPU, RAM, battery, disk, processes
+│   ├── memory/
+│   │   └── context_retriever.py # RAG retrieval hook (ChromaDB when available)
 │   ├── schemas/
 │   │   ├── intent.py           # IntentObject, IntentType enum (canonical)
 │   │   └── command.py          # CommandPlan, ExecutionResult, DESTRUCTIVE_ACTIONS
@@ -305,6 +315,7 @@ AURA/
 │   ├── test_phase2_audit_part1.py  # EventBus, ModeMonitor, Ollama, Router
 │   ├── test_phase2_audit_part2.py  # STT, WakeWord, TTS, Config, Safety
 │   ├── test_destructive_gate.py    # DESTRUCTIVE_ACTIONS → SafetyGate (all pairs)
+│   ├── test_violation2_closure.py  # RAG hook + REALTIME online/offline routing
 │   ├── test_voice_destructive_path.py  # Voice utterances → SafetyGate
 │   ├── test_safety_gate.py         # Confirmation tokens, timeout, audit
 │   ├── test_system_executor.py     # SystemExecutor, ShellExecutor
@@ -321,7 +332,7 @@ AURA/
 
 ## Test Suite
 
-**620 tests passing** (4 skipped) as of 2026-07-08. Run: `python -m pytest tests/ -q`
+**629 tests passing** (4 skipped) as of 2026-07-08. Run: `python -m pytest tests/ -q`
 
 | Section | Tests | Status | Audit contract covered |
 |---|---|---|---|
@@ -335,6 +346,7 @@ AURA/
 | SystemExecutor + ShellExecutor | 27 | Pass | Actions, shell allowlist |
 | SafetyGate | 14 | Pass | Tokens, timeout, audit on CLI path |
 | Destructive gate (all DESTRUCTIVE_ACTIONS) | parametric | Pass | Re-derives `is_destructive` |
+| Violation #2 closure (RAG + REALTIME) | 9 | Pass | RAG flags, browser/offline branches |
 | Voice destructive path | 4 | Pass | shutdown/restart/log_off/close_app utterances |
 | SessionController | 12 | Pass | Lifecycle, inactivity, mic pause |
 | Config validation | 12 | Pass | Required keys, env overrides, `config.example.yaml` |
@@ -350,6 +362,7 @@ AURA/
 | Gap | Status |
 |---|---|
 | Live wake-word → audible TTS screen recording for README | Not yet recorded — requires manual capture session |
+| ChromaDB memory population (RAG returns context) | Hook implemented; install `chromadb` + index project docs for live retrieval |
 | GitHub Pages demo embed | Pending live demo clip |
 | macOS/Linux wake-word CI matrix | Tracked in [#2](https://github.com/aryanjsx/AURA/issues/2) |
 | Voice-path SafetyGate audit-log assertions | Tracked in [#3](https://github.com/aryanjsx/AURA/issues/3) |
@@ -362,12 +375,12 @@ AURA/
 |---|---|---|
 | **Phase 0 — Core Infrastructure** | Event bus, config, registry, CLI, execution backbone | Done |
 | **Phase 1 — System Plugin** | File/process/npm operations, sandbox, permissions, audit chain | Done |
-| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification, executors, safety gate | Done — 20/20 audit violations verified (Fix 13, 2026-07-08) |
+| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification, executors, safety gate, RAG hook, realtime browser search | Done — 20/20 audit violations verified (2026-07-08) |
 | **Phase 3 — Dev Tools** | Git automation, Docker lifecycle, browser automation | Next |
 | **Phase 4 — Vision** | Screen capture, OCR, visual reasoning with LLaVA | Planned |
 | **Phase 5 — GUI Dashboard** | PyQt6 desktop interface with live command log | Planned |
-| **Phase 6 — Memory + RAG** | ChromaDB semantic memory, conversation history | Planned |
-| **Phase 7 — Browser Automation** | Sandboxed web research with Playwright | Planned |
+| **Phase 6 — Memory + RAG** | ChromaDB indexing, conversation history, memory event subscribers | Partial — retrieval hook + config scaffold in Phase 2 |
+| **Phase 7 — Browser Automation** | Sandboxed web research with Playwright | Partial — DuckDuckGo search for `REALTIME_QUERY` (online) |
 | **Phase 8 — Integrations** | Spotify, Weather, Calendar, Gmail bridges | Planned |
 
 ---
@@ -386,14 +399,27 @@ AURA/
 
 ## Contributing
 
-We're building something big and we want you in.
+Kommy is open source under MIT. If any of the [GitHub topics](https://github.com/aryanjsx/AURA/topics) above match your stack, there is a concrete place to contribute — no prior AURA experience required.
+
+**Quick start:** [Fork](https://github.com/aryanjsx/AURA/fork) → clone → branch → PR. Stars help others find the project on GitHub Explore and in topic searches (`voice-assistant`, `local-llm`, `ollama`, etc.).
+
+| If you know… | Start here | Example contribution |
+|---|---|---|
+| `python` / `open-source` | `tests/`, `docs/`, issue triage | Fix a test, improve CONTRIBUTING |
+| `whisper` / `voice-assistant` | `aura/modules/stt.py`, `wake_word.py` | Wake-word accuracy, mic handling ([#2](https://github.com/aryanjsx/AURA/issues/2)) |
+| `ollama` / `local-llm` / `ai` | `aura/core/ollama_client.py`, `intent_router.py` | Prompt tuning, router edge cases |
+| `piper-tts` / offline TTS | `aura/modules/tts.py` | Engine fallback, temp-file cleanup |
+| `automation` / `developer-tools` | `aura/executors/`, `plugins/system/` | New system commands, executor tests |
+| `gitpython` / `docker-sdk` | `plugins/git/`, `plugins/docker/` | Phase 3 plugin stubs → working commands |
+| `chromadb` | `aura/memory/`, `plugins/memory/` | Index project docs, memory event subscribers (Phase 6) |
+| `pyqt6` | `aura/gui/` (planned) | Phase 5 dashboard mockups |
 
 1. Fork the repo
 2. Create your branch (`git checkout -b feat/amazing-feature`)
 3. Commit with [Conventional Commits](https://www.conventionalcommits.org/) (`feat(core): add amazing feature`)
 4. Push and open a Pull Request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Check [open issues](https://github.com/aryanjsx/AURA/issues) — starter tasks tagged `good first issue` ([#2](https://github.com/aryanjsx/AURA/issues/2)) and `help wanted` ([#3](https://github.com/aryanjsx/AURA/issues/3)).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Starter issues: `good first issue` ([#2](https://github.com/aryanjsx/AURA/issues/2)) · `help wanted` ([#3](https://github.com/aryanjsx/AURA/issues/3)).
 
 **Active areas where we need help:**
 - Plugin development (Git, Docker, Browser, Gmail, Spotify)
@@ -404,13 +430,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Check [open issues](
 
 ---
 
-## Star This Repo
+## Star & fork
 
-If AURA's vision resonates with you — an AI that **runs locally**, **executes real actions**, and **respects your privacy** — drop a star.
+If Kommy's vision resonates — local AI that **executes real actions** and **respects your privacy** — a star or fork takes one second and helps this repo surface in GitHub topic feeds for `offline-ai`, `voice-assistant`, and `local-llm`.
 
-It takes one second and tells us you believe AI should be **owned, not rented**.
-
-[![Star this repo](https://img.shields.io/github/stars/aryanjsx/AURA?style=for-the-badge&logo=github&label=Star%20AURA&color=yellow)](https://github.com/aryanjsx/AURA)
+[![Star this repo](https://img.shields.io/github/stars/aryanjsx/AURA?style=for-the-badge&logo=github&label=Star%20Kommy&color=yellow)](https://github.com/aryanjsx/AURA/stargazers)
+[![Fork this repo](https://img.shields.io/github/forks/aryanjsx/AURA?style=for-the-badge&logo=github&label=Fork&color=555)](https://github.com/aryanjsx/AURA/fork)
 
 ---
 

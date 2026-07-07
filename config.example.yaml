@@ -122,6 +122,14 @@ routing:
   fast_confidence: 0.85       # confidence assigned to regex fast-path matches
   fallback_confidence: 0.3    # confidence when LLM classification fails → UNKNOWN
 
+memory:
+  persist_path: ".aura/memory"
+  max_results: 3
+  purge_days: 90
+
+browser:
+  timeout: 15
+
 wake_word:
   engine: "whisper"
   phrases:

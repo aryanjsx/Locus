@@ -176,6 +176,25 @@ class OllamaClient:
             {"model": model, "duration_ms": duration_ms, "streamed": True},
         )
 
+    def embed(self, model: str, text: str) -> list[float]:
+        """Return an embedding vector for *text* via Ollama /api/embeddings."""
+        model = self._resolve_model(model)
+        if not text or not isinstance(text, str):
+            return []
+        try:
+            response = httpx.post(
+                f"{self._base_url}/api/embeddings",
+                json={"model": model, "prompt": text},
+                timeout=self._timeout,
+            )
+            response.raise_for_status()
+            embedding = response.json().get("embedding", [])
+            if isinstance(embedding, list):
+                return [float(v) for v in embedding]
+        except Exception as exc:
+            logger.warning("Embedding request failed for model %s: %s", model, exc)
+        return []
+
     def health_check(self) -> bool:
         """GET /api/tags — returns True if Ollama is reachable."""
         try:
