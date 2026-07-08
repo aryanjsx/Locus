@@ -47,6 +47,7 @@ jobs:
           done
           curl -sf http://localhost:11434/api/tags
           ollama pull nomic-embed-text
+          ollama pull llama3.2:3b
 
       - name: Run linter
         run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics

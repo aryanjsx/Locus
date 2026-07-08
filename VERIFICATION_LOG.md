@@ -99,7 +99,13 @@ Full suite: see CI run / latest local pytest
 
 ### CI verification
 
-*(Updated after push — see session output for run URL and result.)*
+**Run 1** (commit `3c487cd`, workflow `28916569324`): **FAILED** overall — but RAG integration tests **PASSED**:
+```
+tests/test_rag_integration.py .....   [5/5 passed in CI]
+```
+Failures were **unrelated** to RAG: `test_phase2_audit_part1.py` Ollama `chat()` tests got HTTP 404 because CI pulled only `nomic-embed-text`, not `llama3.2:3b` (`config.models.fast`). Fixed in CI workflow by adding `ollama pull llama3.2:3b`.
+
+**Run 2** *(pending re-push with llama3.2:3b pull)* — see below after push completes.
 
 ---
 
