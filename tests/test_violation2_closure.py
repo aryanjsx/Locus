@@ -29,7 +29,9 @@ def config():
         "ollama": {"timeout": 60},
         "routing": {
             "realtime_warning": True,
-            "rag_confidence_threshold": 0.72,
+            # 0.50 — nomic-embed-text good matches land ~0.55–0.65; 0.72 silently filtered all results
+            "rag_confidence_threshold": 0.50,
+            "rag_rank_margin": 0.03,
         },
         "memory": {
             "persist_path": ".aura/memory",

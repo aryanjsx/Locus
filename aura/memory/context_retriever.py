@@ -14,7 +14,11 @@ logger = logging.getLogger("aura.memory")
 
 
 def augment_prompt_with_rag(prompt: str, chunks: list[str]) -> str:
-    """Prepend retrieved context to the user prompt for LLM streaming."""
+    """Prepend retrieved context to the user prompt for LLM streaming.
+
+    All chunks returned by retrieve_context() are included (up to memory.max_results
+    after threshold + rank-margin filtering). There is no separate top-1-only step.
+    """
     if not chunks:
         return prompt
     context = "\n".join(f"- {chunk}" for chunk in chunks)
@@ -37,7 +41,11 @@ def retrieve_context(
     memory_cfg = config.get("memory", {})
     max_results = int(memory_cfg.get("max_results", 3))
     routing_cfg = config.get("routing", {})
-    confidence_threshold = float(routing_cfg.get("rag_confidence_threshold", 0.72))
+    confidence_threshold = float(routing_cfg.get("rag_confidence_threshold", 0.50))
+    # Secondary chunks must be within this cosine-similarity margin of rank-1.
+    # 0.03 excludes cross-topic bleed (e.g. Postgres doc at ~0.55 when auth top is
+    # ~0.60) while keeping closely related docs (JWT + session cookies at ~0.58–0.60).
+    rank_margin = float(routing_cfg.get("rag_rank_margin", 0.03))
     embedding_model = config.get("models", {}).get("embeddings", "")
 
     collection = _open_collection(memory_cfg.get("persist_path", ".aura/memory"))
@@ -69,7 +77,7 @@ def retrieve_context(
 
     documents = results.get("documents") or [[]]
     distances = results.get("distances") or [[]]
-    chunks: list[str] = []
+    scored: list[tuple[str, float]] = []
 
     for doc, distance in zip(documents[0], distances[0]):
         if not doc or not isinstance(doc, str):
@@ -77,7 +85,20 @@ def retrieve_context(
         # Chroma cosine distance: 0 = identical. Map to similarity in [0, 1].
         similarity = 1.0 - float(distance)
         if similarity >= confidence_threshold:
-            chunks.append(doc.strip())
+            scored.append((doc.strip(), similarity))
+
+    if not scored:
+        return []
+
+    scored.sort(key=lambda item: item[1], reverse=True)
+    top_similarity = scored[0][1]
+    chunks: list[str] = []
+    for doc, similarity in scored:
+        if similarity < top_similarity - rank_margin:
+            break
+        chunks.append(doc)
+        if len(chunks) >= max_results:
+            break
 
     return chunks
 

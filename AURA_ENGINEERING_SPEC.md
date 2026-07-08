@@ -486,7 +486,8 @@ models:
 
 routing:
   complexity_threshold:      50
-  rag_confidence_threshold:  0.72
+  rag_confidence_threshold:  0.50   # nomic-embed-text; 0.72 filtered all real matches (see VERIFICATION_LOG.md)
+  rag_rank_margin:           0.03   # exclude rank-2+ chunks far below top-1 similarity
   realtime_warning:          true
   intent_timeout_seconds:    10
   intent_max_retries:        3

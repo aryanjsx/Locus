@@ -114,7 +114,8 @@ tts:
 
 routing:
   complexity_threshold: 50
-  rag_confidence_threshold: 0.72
+  rag_confidence_threshold: 0.50   # nomic-embed-text cosine sim (~0.55–0.65); 0.72 was for a different model distribution
+  rag_rank_margin: 0.03             # drop rank-2+ chunks more than this below top-1 similarity
   realtime_warning: true
   fallback_model: "mistral:7b-instruct-q4_0"
   intent_timeout_seconds: 10

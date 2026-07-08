@@ -37,8 +37,8 @@ pycaw>=20230407      # Windows volume control — optional, graceful fallback
 # Phase 5 — GUI (uncomment when ready)
 # PyQt6                 # Desktop dashboard
 
-# Phase 6 — Memory (uncomment when ready)
-# chromadb              # Vector memory
+# Phase 6 — Memory + RAG (required for test_rag_integration.py regression guard)
+chromadb==1.5.9
 
 # Phase 7 — Browser (uncomment when ready)
 # playwright            # Web automation
