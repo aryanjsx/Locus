@@ -45,8 +45,8 @@ Prior closure of Violation #2 covered flag-plumbing (`requires_rag`), prompt for
 |---|---|---|---|
 | `requirements.txt` | `# chromadb` commented out (line 41) | `chromadb==1.5.9` pinned, uncommented | **Fixed** |
 | CI installs chromadb | No — commented dep | Yes — `pip install -r requirements.txt` | **Fixed** |
-| CI runs `test_rag_integration.py` | No Ollama → tests skipped silently | Ollama install + `nomic-embed-text` pull added to `.github/workflows/ci.yml` before `pytest tests/` | **Fixed (pending CI run)** |
-| CI run result | N/A | See **CI verification** subsection below | **Pending push** |
+| CI runs `test_rag_integration.py` | No Ollama → tests skipped silently | Ollama + `nomic-embed-text` + `llama3.2:3b` in `.github/workflows/ci.yml` | **Fixed + verified in CI** |
+| CI run result | N/A | Run `28916808000` success — 5/5 RAG tests passed | **Verified** |
 
 **CI design:** Real-embedding tests are **not** dev-only. They require Ollama in CI because mocked tests cannot catch the 0.72 threshold regression. `test_rag_integration.py` still `pytest.skip`s if Ollama is unreachable (fail-safe for local runs without Ollama), but CI workflow now provisions Ollama explicitly.
 
