@@ -23,6 +23,10 @@ from aura.utils.mode_monitor import mode_monitor
 
 logger = logging.getLogger("aura.tts")
 
+# Per-item synthesis/playback ceiling — prevents worker thread blocking forever.
+_SYNTHESIS_TIMEOUT_SEC = 90.0
+_PLAYBACK_TIMEOUT_SEC = 60.0
+
 
 class TTSEngine:
     """Voice output with automatic engine switching and priority queue."""
@@ -102,14 +106,24 @@ class TTSEngine:
         # 4. Signal the worker to skip current item
         self._interrupted = True
 
-    def wait_until_idle(self, timeout: float = 120.0) -> None:
-        """Block until the speech queue is drained and playback has finished."""
+    def wait_until_idle(self, timeout: float = 120.0) -> bool:
+        """Block until the speech queue is drained and playback has finished.
+
+        Returns True if idle before timeout, False if timed out while the worker
+        was still synthesizing/playing (_speaking set) or the queue was non-empty.
+        """
         deadline = time.perf_counter() + timeout
         while time.perf_counter() < deadline:
             if self._queue.empty() and not self._speaking.is_set():
-                return
+                return True
             time.sleep(0.05)
-        logger.warning("TTS wait_until_idle timed out after %.0fs", timeout)
+        logger.warning(
+            "TTS wait_until_idle timed out after %.0fs (queue_empty=%s, speaking=%s)",
+            timeout,
+            self._queue.empty(),
+            self._speaking.is_set(),
+        )
+        return False
 
     def _clear_queue(self) -> None:
         """Drain all items from the queue."""
@@ -195,14 +209,30 @@ class TTSEngine:
 
             async def _synthesize():
                 communicate = edge_tts.Communicate(text, self._edge_voice)
-                await communicate.save(tmp_path)
+                await asyncio.wait_for(communicate.save(tmp_path), timeout=45.0)
 
-            asyncio.run(_synthesize())
+            synth_start = time.perf_counter()
+            try:
+                asyncio.run(_synthesize())
+            except TimeoutError:
+                partial_bytes = 0
+                if tmp_path and Path(tmp_path).exists():
+                    partial_bytes = Path(tmp_path).stat().st_size
+                logger.warning(
+                    "edge-tts synthesis timed out after 45s "
+                    "(text_len=%s, partial_mp3_bytes=%s, synth_elapsed_sec=%.1f) "
+                    "— playback never started",
+                    len(text),
+                    partial_bytes,
+                    time.perf_counter() - synth_start,
+                )
+                return False
 
             if self._interrupted:
                 return False
 
-            self._play_file(tmp_path)
+            mp3_bytes = Path(tmp_path).stat().st_size if Path(tmp_path).exists() else 0
+            self._play_file(tmp_path, source="edge-tts", synth_elapsed_sec=time.perf_counter() - synth_start, file_bytes=mp3_bytes)
             return True
         except Exception as exc:
             logger.debug("Edge TTS error: %s", exc)
@@ -223,17 +253,25 @@ class TTSEngine:
                 tmp_path = tmp.name
 
             proc = subprocess.run(
-                ["piper", "--model", self._piper_voice, "--output_file", tmp_path],
+                ["piper", "-m", self._piper_voice, "-f", tmp_path],
                 input=text.encode("utf-8"),
                 capture_output=True,
                 timeout=30,
             )
-            if proc.returncode == 0:
-                if self._interrupted:
-                    return False
-                self._play_file(tmp_path)
-                return True
-            return False
+            if proc.returncode != 0:
+                stderr = proc.stderr.decode("utf-8", errors="replace").strip()
+                logger.info(
+                    "Piper failed (rc=%s, voice=%s): %s",
+                    proc.returncode,
+                    self._piper_voice,
+                    stderr[:400] or "(no stderr)",
+                )
+                return False
+            if self._interrupted:
+                return False
+            wav_bytes = Path(tmp_path).stat().st_size if Path(tmp_path).exists() else 0
+            self._play_file(tmp_path, source="piper", file_bytes=wav_bytes)
+            return True
         except Exception as exc:
             logger.debug("Piper TTS error: %s", exc)
             return False
@@ -260,7 +298,61 @@ class TTSEngine:
             self._pyttsx3_engine = None
             return False
 
-    def _play_file(self, filepath: str) -> None:
+    def _sounddevice_playback_diag(
+        self,
+        expected_sec: float,
+        elapsed_sec: float,
+        *,
+        source: str = "",
+        file_bytes: int = 0,
+        synth_elapsed_sec: float | None = None,
+    ) -> str:
+        """Collect whatever playback state sounddevice exposes at timeout."""
+        import sounddevice as sd
+
+        parts = [
+            f"source={source or 'unknown'}",
+            f"expected_audio_sec={expected_sec:.2f}",
+            f"elapsed_since_play_start_sec={elapsed_sec:.2f}",
+        ]
+        if file_bytes:
+            parts.append(f"file_bytes={file_bytes}")
+        if synth_elapsed_sec is not None:
+            parts.append(f"synth_elapsed_sec={synth_elapsed_sec:.2f}")
+        try:
+            st = sd.get_stream()
+            if st is not None:
+                pos = float(st.time)
+                parts.append(f"stream_time_sec={pos:.2f}")
+                parts.append(f"stream_active={st.active}")
+                parts.append(f"stream_stopped={st.stopped}")
+                if expected_sec > 0:
+                    pct = min(100.0, 100.0 * pos / expected_sec)
+                    parts.append(f"estimated_pct_played={pct:.1f}")
+                    if pct >= 95.0:
+                        parts.append("inference=likely_full_playback_stall_on_completion")
+                    elif pct <= 5.0:
+                        parts.append("inference=likely_no_audible_output")
+                    else:
+                        parts.append("inference=likely_partial_playback")
+        except Exception as exc:
+            parts.append(f"stream_query_error={exc!s}")
+        try:
+            status = sd.get_status()
+            if status:
+                parts.append(f"sd_status={status}")
+        except Exception:
+            pass
+        return ", ".join(parts)
+
+    def _play_file(
+        self,
+        filepath: str,
+        *,
+        source: str = "",
+        file_bytes: int = 0,
+        synth_elapsed_sec: float | None = None,
+    ) -> None:
         """Play an audio file using sounddevice + soundfile, or pygame."""
         if self._interrupted:
             return
@@ -269,8 +361,36 @@ class TTSEngine:
             import soundfile as sf
 
             data, samplerate = sf.read(filepath)
-            sd.play(data, samplerate)
-            sd.wait()
+            if not file_bytes:
+                file_bytes = Path(filepath).stat().st_size if Path(filepath).exists() else 0
+            frames = len(data)
+            expected_sec = frames / float(samplerate) if samplerate else 0.0
+            play_started = time.perf_counter()
+            done = threading.Event()
+
+            def _play_blocking() -> None:
+                try:
+                    sd.play(data, samplerate)
+                    sd.wait()
+                finally:
+                    done.set()
+
+            player = threading.Thread(target=_play_blocking, name="TTS-sd-play", daemon=True)
+            player.start()
+            if not done.wait(timeout=_PLAYBACK_TIMEOUT_SEC):
+                diag = self._sounddevice_playback_diag(
+                    expected_sec,
+                    time.perf_counter() - play_started,
+                    source=source,
+                    file_bytes=file_bytes,
+                    synth_elapsed_sec=synth_elapsed_sec,
+                )
+                logger.warning(
+                    "sounddevice playback timed out after %.0fs — stopping stream (%s)",
+                    _PLAYBACK_TIMEOUT_SEC,
+                    diag,
+                )
+                sd.stop()
             return
         except Exception:
             pass
@@ -284,8 +404,22 @@ class TTSEngine:
             pygame.mixer.init()
             pygame.mixer.music.load(filepath)
             pygame.mixer.music.play()
+            play_started = time.perf_counter()
+            deadline = time.perf_counter() + _PLAYBACK_TIMEOUT_SEC
             while pygame.mixer.music.get_busy():
                 if self._interrupted:
+                    pygame.mixer.music.stop()
+                    break
+                if time.perf_counter() >= deadline:
+                    elapsed = time.perf_counter() - play_started
+                    logger.warning(
+                        "pygame playback timed out after %.0fs — stopping "
+                        "(source=%s, file_bytes=%s, elapsed_sec=%.2f, get_busy=True)",
+                        _PLAYBACK_TIMEOUT_SEC,
+                        source or "unknown",
+                        file_bytes,
+                        elapsed,
+                    )
                     pygame.mixer.music.stop()
                     break
                 time.sleep(0.1)

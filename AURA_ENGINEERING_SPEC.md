@@ -180,6 +180,76 @@ result = stt.transcribe(audio_buffer)  # blocking, returns TranscriptionResult
 
 ---
 
+### 2.7 GitExecutor *(Phase 3 — planning only, not implemented)*
+
+| Property | Value |
+| --- | --- |
+| Class | `GitExecutor` |
+| File | `aura/executors/git_executor.py` |
+| Depends on | `config.py`, GitPython (`git` package), `SafetyGate`, sandbox path rules |
+| Input | `CommandPlan` with `executor=ExecutorType.GIT` |
+| Returns | `ExecutionResult` with human-readable `output` for TTS |
+| Thread | Runs on `CommandEngine` worker thread — may block several seconds |
+| Errors | Returns `ExecutionResult(success=False, error=...)` — never raises to `CommandEngine` |
+
+**Supported actions (Phase 3 MVP):** `status`, `log`, `add`, `commit`, `push`, `pull`, `branch_list`, `branch_delete`, `force_push`, `reset_hard`
+
+**Destructive actions (SafetyGate required):** `push`, `branch_delete`, `force_push`, `reset_hard` — see `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py` and §5.1.
+
+**Parameter validation:**
+- `repo_path` must resolve inside sandbox or configured allowlisted project roots
+- `branch`, `remote`, `commit_message` — alphanumeric + `/._-` only; reject shell metacharacters
+- Never pass raw voice text to `git` CLI; use GitPython API exclusively
+
+**Error behaviour:**
+- Repo not found → *"I couldn't find a git repository at [path]."*
+- Dirty tree on `reset_hard` → still requires confirmation; executor checks and reports file count in prompt
+- Auth failure on `push`/`pull` → *"Git authentication failed. Check your credentials."*
+- Network timeout → abort after `plan.timeout_seconds`, return failure result
+
+```python
+# Public interface (planned)
+executor = GitExecutor(config)
+result = executor.run(action: str, params: dict) -> ExecutionResult
+```
+
+---
+
+### 2.8 DockerExecutor *(Phase 3 — planning only, not implemented)*
+
+| Property | Value |
+| --- | --- |
+| Class | `DockerExecutor` |
+| File | `aura/executors/docker_executor.py` |
+| Depends on | `config.py`, `docker` SDK (`docker-py`), `SafetyGate` |
+| Input | `CommandPlan` with `executor=ExecutorType.DOCKER` |
+| Returns | `ExecutionResult` with summarized container/image info for TTS |
+| Thread | Runs on `CommandEngine` worker thread — may block on `logs`/`build` |
+| Errors | Returns `ExecutionResult(success=False, error=...)` — never raises to `CommandEngine` |
+
+**Supported actions (Phase 3 MVP):** `list`, `start`, `stop`, `logs`, `inspect`, `build`, `remove`, `prune`
+
+**Destructive actions (SafetyGate required):** `build`, `remove`, `prune` — see `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py` and §5.1.
+
+**Parameter validation:**
+- `container_name` / `image_name` — must match `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`; reject IDs with shell metacharacters
+- `remove` requires explicit `container_id` or `container_name` — no wildcard/volume flags from voice
+- `prune` limited to configured scope (`containers`, `images`) — no `--volumes` from voice without explicit future flag
+
+**Error behaviour:**
+- Docker daemon unreachable → *"Docker doesn't seem to be running. Start Docker Desktop and try again."*
+- Container not found → *"I couldn't find a container named [name]."*
+- Build failure → return last 500 chars of build log in `error`, speak brief summary
+- Permission denied → *"Docker permission denied. You may need to add your user to the docker group."*
+
+```python
+# Public interface (planned)
+executor = DockerExecutor(config)
+result = executor.run(action: str, params: dict) -> ExecutionResult
+```
+
+---
+
 ## 3. Intent Schema
 
 ### 3.1 IntentObject — Full Definition
@@ -511,6 +581,59 @@ ollama:
   timeout:  60
   retries:  3
 ```
+
+---
+
+## Appendix A — Phase 3 Adversarial Pre-Mortem *(planning artifact — 2026-07-09)*
+
+Before implementing `GitExecutor` or `DockerExecutor`, enumerate the voice-misclassification and entity-resolution failures that could trigger destructive actions without proper confirmation. SafetyGate is the last line of defense; routing and entity extraction are the first.
+
+### `GIT.force_push`
+
+| Failure mode | Example utterance | Mis-routing risk | Mitigation (pre-code) |
+| --- | --- | --- | --- |
+| Homophone / STT error | "force push" heard as "push" | `push` still destructive but weaker prompt | Both in `DESTRUCTIVE_ACTIONS`; distinct confirmation prompts in SafetyGate |
+| Wrong branch entity | "force push to **main**" but entity resolves to current branch `dev` | Pushes wrong branch with lease | Require explicit `branch` param; speak branch name in prompt; reject if entity confidence < threshold |
+| Wrong repo path | "push my project" resolves to wrong `repo_path` | Destructive op on unintended repo | `repo_path` sandbox validation; speak full resolved path in confirmation |
+
+### `GIT.reset_hard`
+
+| Failure mode | Example utterance | Mis-routing risk | Mitigation (pre-code) |
+| --- | --- | --- | --- |
+| Casual phrasing | "reset everything" / "start fresh" | LLM maps to `reset_hard` instead of `git checkout .` | Restrict `reset_hard` to explicit action vocabulary; no fuzzy LLM action invention in executor |
+| Wrong repo | User has multiple repos; STT drops project name | Hard reset on wrong working tree | Confirm repo path aloud; require `repo_path` in plan params |
+| Partial STT | "reset hard on **main**" → branch captured, repo missing | Defaults to cwd repo unexpectedly | Refuse if `repo_path` ambiguous and multiple git roots configured |
+
+### `GIT.branch_delete`
+
+| Failure mode | Example utterance | Mis-routing risk | Mitigation (pre-code) |
+| --- | --- | --- | --- |
+| Similar branch names | "delete branch **dev**" vs `dev-feature` | Fuzzy match picks wrong branch | Exact branch name match after normalizing; speak name char-by-char for short names |
+| Protected branch | "delete **main**" | Deletes production branch | Optional `protected_branches` config list — always double-confirm |
+| STT homophone | "delete branch" → "delete **brunch**" | Nonsense branch or nearest match | Reject if branch not found; never guess nearest |
+
+### `DOCKER.remove`
+
+| Failure mode | Example utterance | Mis-routing risk | Mitigation (pre-code) |
+| --- | --- | --- | --- |
+| Ambiguous container | "remove the **aura** container" — two matches | Removes wrong container | Require unique match; if multiple, speak list and ask user to disambiguate — do not pick first |
+| STT drops qualifier | "remove container" with no name | LLM hallucinates `container_name` | Refuse without explicit `container_name` or `container_id` in validated entities |
+| Active container | "remove **postgres**" while DB is running | Data loss mid-session | Report running state in confirmation prompt; include uptime/volume warning |
+
+### `DOCKER.prune`
+
+| Failure mode | Example utterance | Mis-routing risk | Mitigation (pre-code) |
+| --- | --- | --- | --- |
+| Vague cleanup | "clean up docker" / "free space" | Maps to `prune` instead of `docker system df` read-only | `prune` only on explicit "prune" vocabulary; generic cleanup → `list` + spoken summary first |
+| Scope escalation | Voice adds "including volumes" | Expands prune scope beyond config | Prune scope hardcoded per action schema — voice cannot add CLI flags |
+| Production accident | Prune on shared dev machine | Removes stopped containers other projects need | Speak count of affected containers/images before confirm; log to `safety_audit.log` |
+
+### Cross-cutting Phase 3 rules (from Phase 2 audit lessons)
+
+1. `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py` is already pre-populated for all five Phase 3 destructive action names — `CommandEngine` must re-derive `is_destructive` from this set before dispatch.
+2. Write `tests/test_destructive_gate.py` parametrized cases for new `(GIT|DOCKER, action)` pairs **before** executor implementation merges.
+3. No `shell=True`. No raw voice strings in subprocess arguments.
+4. Entity extraction must be validated in `CommandEngine._validate_params()` — not in executor alone.
 
 ---
 

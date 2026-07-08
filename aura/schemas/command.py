@@ -67,12 +67,12 @@ DESTRUCTIVE_ACTIONS: frozenset[tuple[ExecutorType, str]] = frozenset({
     (ExecutorType.SYSTEM, "rmdir"),
     # SHELL — arbitrary commands always confirm (defense-in-depth)
     (ExecutorType.SHELL, "run_command"),
-    # GIT — spec §4.2 destructive actions
+    # GIT — Phase 3 destructive actions (pre-registered Fix 03; executors not yet implemented)
     (ExecutorType.GIT, "push"),
     (ExecutorType.GIT, "branch_delete"),
     (ExecutorType.GIT, "force_push"),
     (ExecutorType.GIT, "reset_hard"),
-    # DOCKER — spec §4.2 destructive actions
+    # DOCKER — Phase 3 destructive actions (pre-registered Fix 03; executors not yet implemented)
     (ExecutorType.DOCKER, "build"),
     (ExecutorType.DOCKER, "remove"),
     (ExecutorType.DOCKER, "prune"),

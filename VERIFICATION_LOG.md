@@ -1,222 +1,244 @@
 # AURA Verification Log
 
-Consolidated record of adversarial audit remediation and independent gap-closure passes.  
-**Last updated:** 2026-07-08 — Phase 2 closure pass (Parts 1–4).
+Consolidated record of the Phase 2 adversarial audit remediation arc and all gap-closure passes.  
+**Last updated:** 2026-07-09 — Final Phase 2 closure (TTS diagnosability, piper finding, manual-session handoff, Phase 3 planning gate).
 
 ---
 
-## Phase 2 closure summary (2026-07-08)
+## Phase 2 final status
 
-| Area | Status |
-|---|---|
-| Violations #1, #20 | **Closed** — SafetyGate traces, `voice_executor.py` dead-reference sweep |
-| Violation #2 routing / REALTIME / RAG plumbing | **Closed** — flags, `main.py` hook, mocked regression suite |
-| Violation #2 RAG retrieval (real ChromaDB + embeddings) | **Closed** — threshold fix, rank-margin, `test_rag_integration.py`, CI verified |
-| Local vs CI test-count mismatch | **Explained** — legitimate platform `skipif` (see below) |
-| Live voice (mic → STT → RAG → LLM → audible TTS) | **Partially verified** — RAG→LLM→TTS live; mic/wake/ear **deferred** (manual step below) |
-| GitHub issue #2 (unsolicited zip) | **Open, unresolved** — PR requested; zip not reviewed (see below) |
-
----
-
-## Part 1 — Local vs CI test count mismatch (634/4 vs 635/3)
-
-### Observed counts
-
-| Environment | Passed | Skipped | Collected |
-|---|---|---|---|
-| Local (Windows, Python 3.14, full `pytest tests/`) | **634** | **4** | 638 |
-| CI (Linux, run `28916808000`) | **635** | **3** | 638 |
-
-Both environments collect **638** tests. The ±1 pass/skip delta is **not** a silent collection failure or missing dependency — it is intentional platform-conditional `pytest.skip` / `skipif` behavior.
-
-### Actual skip diff (from `pytest -rs` local + CI log grep)
-
-**Local skips (4)** — all in `tests/test_sandbox.py`, reason: `symlinks unsupported on this host`
-
-| Test |
-|---|
-| `test_symlink_inside_sandbox_pointing_outside_is_blocked` |
-| `test_symlink_chain_escaping_sandbox_is_blocked` |
-| `test_dangling_symlink_inside_sandbox_is_refused` |
-| `test_symlink_entirely_inside_sandbox_is_permitted` |
-
-Mechanism: each test calls `_supports_symlinks(tmp_path)` which probes `os.symlink()`; on Windows without Developer Mode / elevation, symlinks raise `OSError` / `NotImplementedError` and the test is skipped.
-
-**CI skips (3)** — Linux headless runner
-
-| Test | Reason |
-|---|---|
-| `tests/unit/test_safety.py::TestSandboxBlocking::test_sandbox_blocks_windows_system32` | `Windows-only protected path` (`skipif platform != "win32"`) |
-| `tests/unit/test_safety.py::TestSandboxBlocking::test_sandbox_blocks_program_files` | `Windows-only protected path` |
-| `tests/test_system_executor.py::TestSystemExecutor::test_screenshot_saves_file` | `pyautogui requires a display server on Linux` (`skipif not DISPLAY and linux`) |
-
-On CI, `tests/test_sandbox.py` shows **15 passed** (no `s`) — symlink tests **run and pass** because Linux tmp dirs support symlinks without privilege.
-
-### Net accounting (why +1 pass / −1 skip on CI)
-
-| Test group | Local (Windows) | CI (Linux) | Δ pass |
-|---|---|---|---|
-| 4× sandbox symlink tests | SKIP | PASS | **+4** |
-| 2× Windows protected-path safety tests | PASS | SKIP | **−2** |
-| 1× screenshot test (DISPLAY) | PASS | SKIP | **−1** |
-| **Net** | | | **+1 pass, −1 skip** |
-
-This exactly explains **634/4 local** vs **635/3 CI**. No fix required — documentation only.
-
-### Relation to issue #2 (wake-word fixtures)
-
-**Unrelated.** Issue #2 concerns macOS/Linux wake-word CI fixture audio; the mismatch here is sandbox symlink support (Windows vs Linux) and Windows-only / headless-Linux `skipif` markers in safety and system-executor tests. No wake-word or mic-hardware test appears in either skip list.
-
----
-
-## Part 2 — Live voice verification (mic → LLM → audible TTS with real RAG)
-
-### What was verified live (automated, 2026-07-08)
-
-End-to-end pipeline from **injected command text** (post-STT equivalent) through production code paths:
-
-1. **Seed** — real ChromaDB `PersistentClient`, collection `aura_memory`, Ollama `nomic-embed-text` embedding for a **non-public fact**:
-   > *Kommy internal codename Azure Phoenix: the admin API listens exclusively on TCP port **7742** … not documented publicly.*
-
-2. **IntentRouter** — query `"what port does my project use for the admin API"` → `PROJECT_CONTEXT`, `requires_rag=True` (fast-path regex `"my project"`).
-
-3. **BrainController → CommandEngine** — `llm_stream` mode, `requires_rag=True`, model `mistral:7b-instruct-q4_0`.
-
-4. **`retrieve_context()`** — returned the seeded doc (similarity above `rag_confidence_threshold: 0.50`).
-
-5. **`augment_prompt_with_rag()`** — prompt contained `7742` and the Azure Phoenix text.
-
-6. **`ollama.chat_stream()` → `TTSEngine.speak()`** — LLM response:
-   > *Your project uses TCP port 7742 for the admin API, which is not publicly documented.*
-
-   Port **7742** is not general LLM knowledge; a response without RAG would not reliably cite it. **`7742` in the LLM output confirms RAG-augmented generation**, not a generic guess.
-
-7. **TTS** — sentences were queued via `tts.speak()`; `wait_until_idle()` **timed out after 120s** (worker did not report idle in time — likely pyttsx3/edge-tts playback stall). RAG→LLM correctness is unaffected; audible output was not confirmed. Local machine has Realtek mic + speakers (`sounddevice` enumerates devices).
-
-### What could NOT be automated in this session
-
-| Step | Status | Reason |
-|---|---|---|
-| Real wake-word detection (`WakeWordListener`) | **Not run** | Requires live audio loop + Porcupine/openWakeWord; no scripted substitute for human saying "Hey Kommy" |
-| Real microphone → Whisper STT | **Not run** | Agent cannot speak into the microphone; no bundled `.wav` fixture in repo |
-| Human ear confirms speaker output | **Not run** | Automation cannot verify audible clarity; TTS queue drain only proves synthesis was invoked |
-
-**Label:** RAG → LLM → TTS is **live-tested**; mic → STT → wake is **traced, not live-tested**.
-
-### Code trace (mic/wake hops — wired, not exercised live)
-
-```
-WakeWordListener → EventType.WAKE_WORD_DETECTED
-  → main._on_wake_detected → _run_pipeline_worker
-  → STTEngine.listen_and_transcribe()   # if no wake_command payload
-  → IntentRouter.classify(command_text)
-  → BrainController.handle_intent → CommandEngine.execute
-  → [requires_rag] retrieve_context → augment_prompt_with_rag
-  → _stream_to_tts → ollama.chat_stream → tts.speak → tts.wait_until_idle
-```
-
-Wiring confirmed in `main.py` lines 196–261; same `_stream_to_tts` path used for all `llm_stream` intents.
-
-### Manual step to close the remaining gap (human)
-
-1. Ensure Ollama is running with `nomic-embed-text`, `mistral:7b-instruct-q4_0` (or your `config.yaml` `models.general`), and Whisper STT deps installed.
-2. Seed `.aura/memory` (or your `memory.persist_path`) with the Azure Phoenix doc above — same pattern as `tests/test_rag_integration.py::_seed_collection`.
-3. Run `python main.py`.
-4. Say the wake phrase, then: **"What port does my project use for the admin API?"**
-5. **Pass criteria:** transcription shows the question; log shows `[PIPELINE] RAG: augmented prompt with 1 chunk(s)`; spoken answer mentions **7742** (not a generic port guess).
-
-Until that manual session is performed, Phase 2 voice verification remains **one human step short of full live confidence**.
-
----
-
-## Part 3 — GitHub issue #2 (unsolicited `ci_fix_patch.zip`)
-
-**Issue:** [#2 — Add cross-platform wake-word test fixtures (macOS/Linux)](https://github.com/aryanjsx/AURA/issues/2)  
-**State:** **OPEN** (no PR submitted as of 2026-07-08)
-
-### Actions taken
-
-- **`ci_fix_patch.zip` was NOT downloaded, extracted, or executed** at any point.
-- **Owner reply posted** (2026-07-08): [comment #4911438601](https://github.com/aryanjsx/AURA/issues/2#issuecomment-4911438601) — thanks the reporter, reiterates that fixes must arrive as a **Pull Request** or inline diff/Gist for line-by-line review; archive attachments will not be merged.
-- Prior owner reply (2026-07-07): [comment #4908315718](https://github.com/aryanjsx/AURA/issues/2#issuecomment-4908315718) — same policy.
-
-### PR review policy
-
-If a PR is opened: **do not auto-merge.** Full diff review required (scope, `shell=True`, `eval`/`exec`, new destructive actions, schema duplicates) before any merge recommendation.
-
-### Resolution stance
-
-No reviewable PR or inline patch has been provided. Issue remains **open and unresolved** until a proper PR lands, or may be closed as **won't-fix-via-zip** if the contributor does not follow up. The zip alone is **not** accepted under any framing.
-
----
-
-## Violation #2 RAG retrieval (real integration + deployment gaps)
-
-**RAG retrieval path verified with real ChromaDB + real embeddings, not mocks.**
-
-Prior closure of Violation #2 covered flag-plumbing (`requires_rag`), prompt formatting (`augment_prompt_with_rag`), and `main.py` hook wiring only; it did **not** exercise `retrieve_context()` against a live ChromaDB collection with Ollama-produced embedding vectors.
-
-### Environment confirmed
-
-| Dependency | Status |
-|---|---|
-| `chromadb` | Pinned `chromadb==1.5.9` in `requirements.txt` |
-| Ollama | Running at `http://localhost:11434` |
-| Embeddings model | `nomic-embed-text:latest` — 768-dim vectors |
-
-### Bug found and fixed — threshold
-
-**Broken:** `routing.rag_confidence_threshold` default **0.72** filtered all real `nomic-embed-text` cosine matches (~0.55–0.65). `retrieve_context()` returned `[]` even with populated ChromaDB.
-
-**Fix:** default **0.50** in `context_retriever.py`, `config.example.yaml`, `test_violation2_closure.py`, `AURA_ENGINEERING_SPEC.md`.
-
-### Bug found and fixed — rank-2 bleed
-
-**Observed:** With threshold 0.50 alone, auth queries pulled PostgreSQL doc as rank-2. `augment_prompt_with_rag()` includes every surviving chunk.
-
-**Fix:** `routing.rag_rank_margin: 0.03` — secondary chunks must be within 0.03 of rank-1 similarity.
-
-### CI / dependency deployment
+**Phase 2 is complete pending one human action only:** the manual live voice session in Part 3 below. No other automated gap remains open for Phase 2 feature verification.
 
 | Item | Status |
 |---|---|
-| `chromadb==1.5.9` in `requirements.txt` | **Fixed** |
-| CI Ollama + `nomic-embed-text` + `llama3.2:3b` | **Fixed** in `.github/workflows/ci.yml` |
-| `test_rag_integration.py` in CI | **5/5 passed** (run `28916808000`) |
+| Original 20 audit violations (Fix 00–13) | **Closed** — verified in Fix 13 pass (`scripts/fix13_verify.py`) |
+| Independent gap-closure (dead refs, SafetyGate traces) | **Closed** |
+| Violation #2 RAG (real ChromaDB + Ollama embeddings) | **Closed** — CI run `28916808000` |
+| Local vs CI test-count mismatch (634/4 vs 635/3) | **Explained** — platform `skipif` |
+| TTS idle timeout investigation | **Closed** — intermittent stall diagnosed; signaling reliable; diagnosability improved |
+| Piper OFFLINE fallback | **Documented** — voice model not installed in dev env; fallback confirmed; logging fixed |
+| Manual live voice session (wake + mic + ear) | **PENDING HUMAN** — instructions in Part 3; cannot be closed by automation |
+| GitHub issue #2 (unsolicited zip) | **Open** — out of Phase 2 scope; does not block Phase 3 planning |
 
-### Three-tier confidence (RAG feature)
+---
 
-| Layer | Confidence |
+## Arc summary — original 20 violations
+
+Phase 2 began with an adversarial audit identifying 20 violations across safety, routing, schema drift, and test coverage. Fix prompts 00–13 addressed them systematically. Fix 13 (`scripts/fix13_verify.py`) re-verified all 20 as **FIXED**.
+
+Representative closed items:
+
+| # | Area | Resolution |
+|---|---|---|
+| 1 | Destructive actions bypassing SafetyGate | Canonical `DESTRUCTIVE_ACTIONS` frozenset; `CommandEngine` re-derives `is_destructive` |
+| 2 | RAG hook / REALTIME routing | `requires_rag` plumbing + `test_violation2_closure.py`; later extended with real integration tests |
+| 3 | Schema duplicates / drift | Single `IntentObject` in `aura/schemas/intent.py` |
+| 20 | Dead references in `voice_executor.py` | Swept and removed |
+
+Full per-violation traces live in Fix 13 commit history and `scripts/fix13_verify.py` output.
+
+---
+
+## RAG integration (Violation #2 extended closure)
+
+### Bug found — threshold 0.72
+
+`routing.rag_confidence_threshold: 0.72` filtered all real `nomic-embed-text` cosine matches (~0.55–0.65). RAG appeared wired but never injected content.
+
+**Fix:** default `0.50` + `rag_rank_margin: 0.03` in `context_retriever.py`, `config.example.yaml`, tests, spec.
+
+### Verification
+
+- `tests/test_rag_integration.py` — 5 real ChromaDB + Ollama tests (no mocks)
+- CI run `28916808000` — 5/5 RAG tests passed; 635 passed / 3 skipped overall
+- Live pipeline — port-7742 fact retrieved and cited by LLM in automated runs
+
+---
+
+## Local vs CI test count (634/4 vs 635/3)
+
+Both collect **638** tests. Delta is legitimate platform skips:
+
+- **Local (Windows):** 4× `test_sandbox.py` symlink tests skip (`symlinks unsupported on this host`)
+- **CI (Linux):** 2× Windows-only safety tests + 1× headless screenshot test skip
+- **Net:** +1 pass / −1 skip on CI — documented, no fix required
+
+Unrelated to issue #2 wake-word fixtures.
+
+---
+
+## TTS investigation (complete arc)
+
+### Conflicting reports resolved
+
+Two separate runs caused the contradiction:
+
+| Run | Outcome |
 |---|---|
-| `OllamaClient.embed()` → ChromaDB → threshold + rank-margin → `retrieve_context()` → `augment_prompt_with_rag()` | **Live integration test** (`tests/test_rag_integration.py`) |
-| Augmented prompt → `main.py` `_stream_to_tts` → `chat_stream` → `tts.speak` | **Live-tested** (2026-07-08 session, injected command text) |
-| Wake word → mic STT → human hears correct TTS | **Deferred** — manual step above |
+| Foreground (~54s) | Completed; incorrectly summarized as "queue drained" |
+| Background task 225127 | `wait_until_idle` timed out at 120s while `_speaking` still set |
 
-### Regression runs
+### Mechanical meaning of timeout
 
-```
-tests/test_rag_integration.py:     5 passed (local + CI)
-Full suite (local, 2026-07-08):    634 passed, 4 skipped
-Full suite (CI run 28916808000):   635 passed, 3 skipped
-```
+`wait_until_idle()` polls `_queue.empty() AND NOT _speaking.is_set()`. `_speaking` clears only after `_synthesize_and_play()` returns. **Timeout = backend had not returned** — not a false idle signal.
 
-**CI success:** https://github.com/aryanjsx/AURA/actions/runs/28916808000
+### Reproducibility (2026-07-08 evening)
+
+20/20 subsequent runs (10 isolated + 10 full RAG pipeline): edge-tts completes in ~4–9s; `wait_until_idle()` returns True every time. Original 120s stall = **intermittent** edge-tts/sounddevice flakiness (branch c).
+
+### Mitigations applied
+
+- edge-tts: 45s synthesis timeout
+- sounddevice: threaded `sd.wait()` with 60s ceiling + `sd.stop()`
+- `wait_until_idle()` returns `bool`; logs `queue_empty` + `speaking` on timeout
+- `tests/test_tts_idle.py` — 3 regression tests
+
+### TTS stall diagnosability (2026-07-09 — Part 1 judgment)
+
+**Question:** When a timeout fires, can we know if audio partially played, fully played, or never played?
+
+**What the libraries expose:**
+
+| Layer | Available at timeout | Not available |
+|---|---|---|
+| **edge-tts** | Whether timeout occurred during synthesis vs playback; `partial_mp3_bytes` on disk if synthesis hung; `text_len` | Whether speaker actually emitted sound; network stall vs local stall distinction |
+| **sounddevice** | `sd.get_stream().time` (stream position sec), `active`, `stopped`; `expected_audio_sec` from file; `estimated_pct_played`; `sd.get_status()` buffer over/underruns | Guaranteed mapping from stream position to audible output (driver may buffer) |
+| **pyttsx3** | Elapsed time only; no position API | Any playback progress metric |
+
+**Added logging (2026-07-09):** On playback timeout, `aura/modules/tts.py` now logs a diagnostic string including `source`, `expected_audio_sec`, `elapsed_since_play_start_sec`, `stream_time_sec`, `estimated_pct_played`, and an `inference=` label (`likely_no_audible_output` / `likely_partial_playback` / `likely_full_playback_stall_on_completion`). On edge-tts synthesis timeout, logs `partial_mp3_bytes` and notes playback never started.
+
+**Accepted limitation (explicit):** We **cannot** definitively prove what the human ear heard. Stream position is a **proxy**, not ground truth — OS audio buffering and Bluetooth latency can decouple stream completion from audible output. Inferring "full vs partial vs none" from `estimated_pct_played` is **best-effort diagnostics**, not forensic certainty. Building OS-level audio capture analysis would require platform-specific hooks disproportionate to scope. **This is acceptable to ship** with the improved logging: future stalls will be more diagnosable than "it timed out," but human confirmation remains authoritative for audible quality.
 
 ---
 
-## Prior entries (summary)
+## Piper OFFLINE fallback (2026-07-09 — Part 2)
 
-- **Fix 13 / gap-closure (2026-07-08):** Violations #1, #20 closed with per-action SafetyGate traces and `voice_executor.py` dead-reference sweep. Violation #2 closed for routing flags, REALTIME online/offline branches, and mocked RAG plumbing.
+### Reproduced failure
+
+OFFLINE path isolated with `ModeMonitor` forced to OFFLINE:
+
+```
+Piper failed (rc=1, voice=en_US-lessac-medium):
+ValueError: Unable to find voice: en_US-lessac-medium (use piper.download_voices)
+```
+
+### Root cause
+
+| Factor | Finding |
+|---|---|
+| Piper binary | **Present** on PATH (`piper.exe` from `piper-tts` Python package) |
+| Voice model | **Not downloaded** — `en_US-lessac-medium` ONNX model absent |
+| CLI flags | Code used `--model`/`--output_file`; package expects `-m`/`-f` (both accepted by installed package for model arg, but failure is model-not-found) |
+| Logging | **Was silent** — `returncode != 0` returned False with stderr only at DEBUG |
+
+### Judgment
+
+**Expected in this dev environment** — piper voice assets were never downloaded (`python -m piper.download_voices en_US-lessac-medium` not run). **Fallback chain works as designed:** piper fails → pyttsx3 completes in ~3.4s.
+
+**Integration fix applied:** Piper stderr now logged at INFO on failure; CLI updated to `-m`/`-f`.
+
+**Release caveat:** Any release claiming **piper** as the offline TTS engine must verify voice download in setup docs and test piper path explicitly — not only pyttsx3 fallback.
 
 ---
 
-## Phase 2 readiness verdict
+## Part 3 — Manual live voice session *(PENDING HUMAN)*
 
-**Phase 2 automated verification is complete.** All identified application bugs in the remediation arc are fixed and regression-tested; RAG retrieval is proven with real ChromaDB + Ollama embeddings in CI; the local/CI test-count delta is explained and legitimate.
+**This is the one remaining item in the entire Phase 2 arc that requires a human.** No further automated Cursor pass can close it.
 
-**Two items remain outside "fully live" closure:**
+### Prerequisites
 
-1. **Manual live voice session** (wake word + mic STT + human ear) — deferred with explicit instructions above; does not block README/roadmap documentation but should be listed as a pre-release checklist item.
-2. **GitHub issue #2** — open; no reviewable PR; does not block Phase 2 feature verification but remains an unresolved contributor thread.
+- Ollama running: `nomic-embed-text`, `mistral:7b-instruct-q4_0` (or your `config.yaml` `models.general`)
+- Whisper STT dependencies installed
+- Microphone and speakers working
+- Network available if using ONLINE mode (edge-tts); OFFLINE will use piper→pyttsx3 fallback
 
-**Phase 2 is ready for the README/roadmap update and release planning process**, provided the release notes explicitly record: (a) the one manual voice confirmation step, and (b) issue #2 as open/pending PR.
+### Step 1 — Seed memory
+
+From project root, run once:
+
+```python
+python -c "
+import chromadb
+from aura.core.config_loader import load_config
+from aura.core.ollama_client import OllamaClient
+
+config = load_config()
+persist = config['memory']['persist_path']  # default: .aura/memory
+doc = (
+    'Kommy internal codename Azure Phoenix: the admin API listens exclusively on TCP port 7742 '
+    'for dashboard operators; this port is not documented publicly.'
+)
+ollama = OllamaClient(config)
+emb = ollama.embed(config['models']['embeddings'], doc)
+client = chromadb.PersistentClient(path=persist)
+try:
+    client.delete_collection('aura_memory')
+except Exception:
+    pass
+col = client.get_or_create_collection('aura_memory', metadata={'hnsw:space': 'cosine'})
+col.add(ids=['azure_phoenix_port'], documents=[doc], embeddings=[emb])
+print('Seeded aura_memory at', persist)
+"
+```
+
+### Step 2 — Start pipeline
+
+```bash
+python main.py
+```
+
+Wait for startup TTS ("Kommy online…") and wake listener active message.
+
+### Step 3 — Speak
+
+1. Say the wake phrase (e.g. **"Hey Kommy"**)
+2. When prompted, ask: **"What port does my project use for the admin API?"**
+
+### Step 4 — Pass criteria (confirm by ear)
+
+| Check | Pass |
+|---|---|
+| Wake word triggers reliably | Pipeline logs `[PIPELINE] Wake triggered!` |
+| Transcription correct | Log shows your question (minor STT variation OK) |
+| RAG hit | Log shows `[PIPELINE] RAG: augmented prompt with 1 chunk(s)` |
+| Audible response | You **hear** a spoken answer |
+| Content correct | Spoken answer mentions port **7742** (not a generic guess) |
+| No stall | No `TTS wait_until_idle timed out` in console/logs; if timeout appears, note diagnostic fields (`estimated_pct_played`, `inference=`) and report |
+
+### Step 5 — Record result
+
+Update this log (or tell the next session): **PASS** or **FAIL** with observed behavior.
+
+---
+
+## Regression test counts
+
+```
+tests/test_rag_integration.py:   5 passed (local + CI)
+tests/test_tts_idle.py:          3 passed (local)
+tests/test_violation2_closure.py: 9 passed (mocked routing/RAG flags)
+Full suite (local):              634 passed, 4 skipped (platform skips)
+Full suite (CI 28916808000):     635 passed, 3 skipped
+```
+
+---
+
+## Phase 3 planning gate (2026-07-09)
+
+Phase 3 planning artifacts produced **without implementation code**:
+
+| Artifact | Location |
+|---|---|
+| GitExecutor + DockerExecutor module contracts | `AURA_ENGINEERING_SPEC.md` §2.7, §2.8 |
+| `DESTRUCTIVE_ACTIONS` pre-registration | `aura/schemas/command.py` — already includes `GIT.{push,branch_delete,force_push,reset_hard}` and `DOCKER.{build,remove,prune}` from Fix 03 |
+| Adversarial pre-mortem | `AURA_ENGINEERING_SPEC.md` Appendix A |
+
+Phase 3 may begin implementation against these artifacts.
+
+---
+
+## Prior session references
+
+- **CI success:** https://github.com/aryanjsx/AURA/actions/runs/28916808000
+- **Issue #2:** Open — unsolicited zip not reviewed; PR requested
+- **Diagnostic scripts:** `scripts/diagnose_tts_idle.py`, `scripts/repro_live_rag_tts.py`
