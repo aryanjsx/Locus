@@ -92,9 +92,9 @@ Prior closure of Violation #2 covered flag-plumbing (`requires_rag`), prompt for
 ### Regression runs
 
 ```
-tests/test_rag_integration.py: 5 passed (local, extended suite)
-tests/test_rag_integration.py + tests/test_violation2_closure.py: see CI run
-Full suite: see CI run / latest local pytest
+tests/test_rag_integration.py: 5 passed (local extended suite)
+Full suite (local, this session): 634 passed, 4 skipped
+Full suite (CI run 28916808000): 635 passed, 3 skipped
 ```
 
 ### CI verification
