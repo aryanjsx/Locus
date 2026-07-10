@@ -68,6 +68,7 @@ DESTRUCTIVE_ACTIONS: frozenset[tuple[ExecutorType, str]] = frozenset({
     # SHELL — arbitrary commands always confirm (defense-in-depth)
     (ExecutorType.SHELL, "run_command"),
     # GIT — Phase 3 destructive actions (pre-registered Fix 03; executors not yet implemented)
+    # push: unconditionally destructive (option c, 2026-07-09) — branch-conditional deferred; see §5.1
     (ExecutorType.GIT, "push"),
     (ExecutorType.GIT, "branch_delete"),
     (ExecutorType.GIT, "force_push"),

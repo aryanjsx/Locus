@@ -196,6 +196,8 @@ result = stt.transcribe(audio_buffer)  # blocking, returns TranscriptionResult
 
 **Destructive actions (SafetyGate required):** `push`, `branch_delete`, `force_push`, `reset_hard` — see `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py` and §5.1.
 
+**`push` destructive scope (deliberate, 2026-07-09):** `push` is **unconditionally destructive** in `DESTRUCTIVE_ACTIONS` — every push requires SafetyGate confirmation regardless of target branch. Branch-conditional classification (confirm only on `main`/`master`/protected branches) is **explicitly deferred** until GitExecutor exists and real voice usage patterns are observed. Rationale: see §5.1 `git push` entry and VERIFICATION_LOG.md §GIT.push scope decision.
+
 **Parameter validation:**
 - `repo_path` must resolve inside sandbox or configured allowlisted project roots
 - `branch`, `remote`, `commit_message` — alphanumeric + `/._-` only; reject shell metacharacters
@@ -347,7 +349,7 @@ class CommandPlan:
 | `SHELL` | `run_command`, `capture_output` | None |
 | `FILE` | `create`, `read`, `list`, `move`, `rename`, `copy` | `delete`, `rmdir` |
 | `SYSTEM` | `open_app`, `close_app`, `screenshot`, `get_stats`, `set_vol` | `kill_process` |
-| `GIT` | `status`, `log`, `add`, `commit`, `push`, `pull`, `branch_list` | `branch_delete`, `force_push`, `reset_hard` |
+| `GIT` | `status`, `log`, `add`, `commit`, `pull`, `branch_list` | `push`, `branch_delete`, `force_push`, `reset_hard` |
 | `DOCKER` | `list`, `start`, `stop`, `logs`, `inspect` | `build`, `remove`, `prune` |
 | `NPM` | `start`, `install`, `build`, `test`, `run_script` | None |
 | `BROWSER` | `navigate`, `search`, `extract_text`, `fill_form`, `click` | None |
@@ -405,6 +407,8 @@ A command is classified as **DESTRUCTIVE** if it permanently modifies, deletes, 
 | File | Delete any file | *"I'm about to delete [filename]. Say yes to confirm."* |
 | File | `rmdir` / delete folder | *"This will permanently delete the folder [name] and all contents. Confirm?"* |
 | Git | `git push` | *"Pushing [N] commits to [branch] on [remote]. Confirm?"* |
+
+> **`git push` — unconditional destructive (option c, 2026-07-09):** `(ExecutorType.GIT, "push")` is in `DESTRUCTIVE_ACTIONS` with **no branch predicate**. Every push — including to a disposable feature branch — triggers voice confirmation. This is a **deliberate safety-first choice**, not an oversight: the flat `(executor, action)` frozenset cannot express conditional rules without a separate predicate, and branch-conditional push was judged premature before GitExecutor exists (no real git voice commands run yet; `branch_name` entity extraction from STT is unreliable; resolving the default branch requires live repo inspection at plan-build time). **Future enhancement (deferred):** when GitExecutor ships, evaluate branch-conditional confirmation with a minimal predicate on `plan.params["branch_name"]` against a configurable `git.protected_branches` list, **failing closed** (treat as destructive) when branch is unknown. Do not implement that predicate until usage data exists.
 | Git | `git reset --hard` | *"Hard reset will discard all uncommitted changes. This cannot be undone. Confirm?"* |
 | Git | Branch delete | *"Deleting branch [name]. Confirm?"* |
 | Git | Force push | *"Force push to [branch] will overwrite remote history. Are you absolutely sure?"* |
@@ -634,6 +638,7 @@ Before implementing `GitExecutor` or `DockerExecutor`, enumerate the voice-miscl
 2. Write `tests/test_destructive_gate.py` parametrized cases for new `(GIT|DOCKER, action)` pairs **before** executor implementation merges.
 3. No `shell=True`. No raw voice strings in subprocess arguments.
 4. Entity extraction must be validated in `CommandEngine._validate_params()` — not in executor alone.
+5. **`GIT.push` scope:** Unconditional destructive for Phase 3 MVP (option c). Branch-conditional confirmation deferred — see §5.1 and §2.7.
 
 ---
 

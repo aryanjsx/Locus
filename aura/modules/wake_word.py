@@ -69,8 +69,41 @@ class WakeWordListener:
 
         self._engine = _get("engine", "whisper")
         self._phrases: list[str] = _get("phrases", ["hey kommy", "kommy"])
-        self._listen_duration: float = float(_get("listen_duration", 2.0))
+        stt_cfg = config.get("stt", {}) if isinstance(config, dict) else {}
+        # End-of-utterance: record until this many seconds of silence (not fixed clip length).
+        self._silence_timeout: float = float(
+            _get("silence_timeout", stt_cfg.get("silence_timeout", 1.5))
+        )
+        # Hard cap per utterance — must exceed silence_timeout or silence can never fire.
+        self._max_listen_duration: float = float(_get("max_listen_duration", 12.0))
+        if self._max_listen_duration < self._silence_timeout + 1.0:
+            logger.warning(
+                "wake_word.max_listen_duration (%.1fs) is too short for "
+                "silence_timeout (%.1fs) — raising to %.1fs",
+                self._max_listen_duration,
+                self._silence_timeout,
+                self._silence_timeout + 8.0,
+            )
+            self._max_listen_duration = self._silence_timeout + 8.0
+        if isinstance(ww, dict) and "listen_duration" in ww and "max_listen_duration" not in ww:
+            logger.warning(
+                "wake_word.listen_duration is deprecated and ignored (was %.1fs); "
+                "use wake_word.max_listen_duration (now %.1fs)",
+                ww.get("listen_duration"),
+                self._max_listen_duration,
+            )
+        self._post_listen_cooldown: float = float(_get("post_listen_cooldown", 1.0))
         self._vad_threshold: float = float(_get("vad_threshold", 0.008))
+        # When True, a clear spoken command activates the pipeline even if the
+        # wake phrase is absent from the Whisper transcript (e.g. user says only
+        # the question in one breath). Ctrl+Space always works regardless.
+        self._activate_without_phrase: bool = bool(
+            _get("activate_without_phrase", True)
+        )
+        self._min_command_chars: int = int(_get("min_command_chars", 10))
+        self._silence_rms_threshold: float = float(
+            _get("silence_rms_threshold", stt_cfg.get("rms_silence_threshold", 0.003))
+        )
         self._vad_pre_frames: int = int(_get("vad_pre_frames", 3))
         self._input_device = _get("input_device", None)
         if self._input_device is not None:
@@ -171,21 +204,22 @@ class WakeWordListener:
 
     def _listen_whisper(self) -> None:
         """
-        Lightweight voice-activity detection → short Whisper transcription →
-        keyword match.  Uses the Whisper model already loaded for STT, so
-        there is zero additional model loading cost.
+        Voice-activity detection → record until silence → Whisper → keyword match.
 
         Flow:
           1. Read 100ms audio chunks, compute RMS
           2. When RMS exceeds vad_threshold for vad_pre_frames consecutive
              frames, start recording
-          3. Record for listen_duration seconds (captures the wake phrase)
-          4. Run Whisper transcription on the buffer
+          3. Keep recording until silence_timeout seconds of quiet audio
+             (same end-of-utterance model as STTEngine), up to max_listen_duration
+          4. Run Whisper transcription on the full buffer
           5. If any configured phrase appears in the text → emit wake event
           6. Cooldown 1.5s, then resume monitoring
         """
-        chunk_samples = int(SAMPLE_RATE * 0.1)  # 100ms
-        record_chunks = int(self._listen_duration / 0.1)
+        chunk_duration_sec = 0.1
+        chunk_samples = int(SAMPLE_RATE * chunk_duration_sec)
+        silence_chunks_needed = max(1, int(self._silence_timeout / chunk_duration_sec))
+        max_record_chunks = max(1, int(self._max_listen_duration / chunk_duration_sec))
         inp = _resolve_input_device(self._config) if self._input_device is None else self._input_device
         try:
             dev_name = sd.query_devices(inp)["name"]
@@ -199,8 +233,9 @@ class WakeWordListener:
         )
         logger.info(
             "[WakeWord] Whisper wake ready — phrases: %s, "
-            "listen: %.1fs, vad: %.4f, mic: [%s] %s",
-            self._phrases, self._listen_duration, self._vad_threshold, inp, dev_name,
+            "silence_end: %.1fs, max_listen: %.1fs, vad: %.4f, mic: [%s] %s",
+            self._phrases, self._silence_timeout, self._max_listen_duration,
+            self._vad_threshold, inp, dev_name,
         )
 
         stream_kwargs = dict(
@@ -232,16 +267,32 @@ class WakeWordListener:
                             if speech_count < self._vad_pre_frames:
                                 continue
 
-                            # Speech detected — record for listen_duration
+                            # Speech detected — record until silence (full utterance)
                             if self._debug:
-                                print(f"[WakeWord] Voice activity (rms={rms:.4f}), recording {self._listen_duration}s...")
+                                print(
+                                    f"[WakeWord] Voice activity (rms={rms:.4f}), "
+                                    f"recording until {self._silence_timeout}s silence "
+                                    f"(max {self._max_listen_duration}s)..."
+                                )
 
                             audio_buf = [chunk.flatten()]
-                            for _ in range(record_chunks - 1):
+                            silence_count = 0
+                            for _ in range(max_record_chunks - 1):
                                 if self._stop_event.is_set() or self._pause_event.is_set():
                                     break
                                 c, _ = stream.read(chunk_samples)
-                                audio_buf.append(c.flatten())
+                                flat = c.flatten()
+                                audio_buf.append(flat)
+                                chunk_rms = float(np.sqrt(np.mean(flat ** 2)))
+                                if chunk_rms < self._silence_rms_threshold:
+                                    silence_count += 1
+                                else:
+                                    silence_count = 0
+                                if (
+                                    silence_count >= silence_chunks_needed
+                                    and len(audio_buf) > silence_chunks_needed
+                                ):
+                                    break
 
                             audio = np.concatenate(audio_buf)
                             text = self._whisper_transcribe(audio)
@@ -256,8 +307,20 @@ class WakeWordListener:
                                 self._emit_detected("whisper", transcript=text, command=command)
                                 self._cooldown(1.5)
                                 speech_count = 0
-                            else:
+                            elif self._should_activate_direct_command(text):
+                                logger.info('[WakeWord] Direct command (no wake phrase): "%s"', text)
+                                print(f'[WakeWord] Command detected: "{text}"')
+                                self._emit_detected("whisper_direct", transcript=text, command=text.strip())
+                                self._cooldown(1.5)
                                 speech_count = 0
+                            else:
+                                if self._debug and text.strip():
+                                    print(
+                                        '[WakeWord] Ignored — no wake phrase. '
+                                        'Say "Hey Kommy" first, or press Ctrl+Space.'
+                                    )
+                                speech_count = 0
+                                self._cooldown(self._post_listen_cooldown)
 
             except Exception as exc:
                 if self._pause_event.is_set() or self._stop_event.is_set():
@@ -279,12 +342,24 @@ class WakeWordListener:
             result = self._whisper_model.transcribe(
                 audio, fp16=False, language="en",
                 no_speech_threshold=self._no_speech_threshold,
-                initial_prompt="Hey Kommy.",
+                initial_prompt=(
+                    "Hey Kommy. What port does my project use for the admin API?"
+                ),
             )
             return result.get("text", "").strip().lower()
         except Exception as exc:
             logger.debug("[WakeWord] Whisper transcribe error: %s", exc)
             return ""
+
+    def _should_activate_direct_command(self, text: str) -> bool:
+        """Activate pipeline on a substantive utterance without wake phrase."""
+        if not self._activate_without_phrase:
+            return False
+        cleaned = text.strip()
+        if len(cleaned) < self._min_command_chars:
+            return False
+        # Require at least one word character — filters coughs / noise misreads
+        return any(ch.isalnum() for ch in cleaned)
 
     def _matches_wake_phrase(self, text: str) -> bool:
         """Check if text matches a wake phrase, with fuzzy tolerance for

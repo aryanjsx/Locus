@@ -270,6 +270,29 @@ class TestWakeWordListenerHappyPath:
         assert events[0]["source"] == "openwakeword"
         assert "timestamp" in events[0]
 
+    def test_direct_command_without_wake_phrase_emits_wake(self, config):
+        """Substantive utterance without wake phrase can activate when configured."""
+        from aura.modules.wake_word import WakeWordListener
+        listener = WakeWordListener(config)
+        assert listener._should_activate_direct_command(
+            "what port does my project use for admin api?"
+        )
+        events = []
+        bus.subscribe(EventType.WAKE_WORD_DETECTED, lambda p: events.append(p))
+        listener._emit_detected(
+            "whisper_direct",
+            transcript="what port does my project use for admin api?",
+            command="what port does my project use for admin api?",
+        )
+        assert len(events) == 1
+        assert events[0]["command"] == "what port does my project use for admin api?"
+        assert events[0]["source"] == "whisper_direct"
+
+    def test_short_noise_not_direct_command(self, config):
+        from aura.modules.wake_word import WakeWordListener
+        listener = WakeWordListener(config)
+        assert not listener._should_activate_direct_command("what?")
+
     def test_payload_timestamp_is_valid_iso_string(self, config):
         """WAKE_WORD_DETECTED timestamp is a parseable ISO datetime string"""
         from datetime import datetime

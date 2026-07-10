@@ -136,6 +136,12 @@ wake_word:
   phrases:
     - "hey kommy"
     - "kommy"
+  silence_timeout: 1.5        # seconds of quiet audio that ends a wake utterance (same idea as stt.silence_timeout)
+  max_listen_duration: 12     # hard cap per wake listen pass (wake phrase + command in one breath)
+  activate_without_phrase: true   # run pipeline when a clear command is spoken without "hey kommy" in transcript
+  min_command_chars: 10
+  post_listen_cooldown: 1.0
+  # listen_duration: deprecated — ignored; use max_listen_duration
   no_speech_threshold: 0.3    # Whisper VAD threshold for wake-word transcription
 
 ollama:

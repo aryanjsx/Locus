@@ -7,7 +7,7 @@ Consolidated record of the Phase 2 adversarial audit remediation arc and all gap
 
 ## Phase 2 final status
 
-**Phase 2 is complete pending one human action only:** the manual live voice session in Part 3 below. No other automated gap remains open for Phase 2 feature verification.
+**Phase 2 status: closed pending manual voice session result.** No other automated gap remains open for Phase 2 feature verification.
 
 | Item | Status |
 |---|---|
@@ -17,7 +17,7 @@ Consolidated record of the Phase 2 adversarial audit remediation arc and all gap
 | Local vs CI test-count mismatch (634/4 vs 635/3) | **Explained** — platform `skipif` |
 | TTS idle timeout investigation | **Closed** — intermittent stall diagnosed; signaling reliable; diagnosability improved |
 | Piper OFFLINE fallback | **Documented** — voice model not installed in dev env; fallback confirmed; logging fixed |
-| Manual live voice session (wake + mic + ear) | **PENDING HUMAN** — instructions in Part 3; cannot be closed by automation |
+| Manual live voice session (wake + mic + ear) | **PENDING HUMAN** — instructions in Part 3; result updates final status line |
 | GitHub issue #2 (unsolicited zip) | **Open** — out of Phase 2 scope; does not block Phase 3 planning |
 
 ---
@@ -220,6 +220,40 @@ tests/test_violation2_closure.py: 9 passed (mocked routing/RAG flags)
 Full suite (local):              634 passed, 4 skipped (platform skips)
 Full suite (CI 28916808000):     635 passed, 3 skipped
 ```
+
+---
+
+---
+
+## DESTRUCTIVE_ACTIONS independent verification (2026-07-09)
+
+Per Violation #1 lesson — **verify the safety claim, don't trust the report.** Independently read `aura/schemas/command.py` and ran `tests/test_destructive_gate.py` (parametrized over the full frozenset).
+
+**Result:** All seven Phase 3 `(executor, action)` pairs are present in code with exact `ExecutorType` + string matches. All seven parametrized gate tests **PASSED** (`is_destructive=False` on incoming plan → CommandEngine re-derives `True` → SafetyGate.check()` called).
+
+**Spec reconciliation:** `AURA_ENGINEERING_SPEC.md` §4.2 listed `GIT.push` under non-destructive Actions while code and §5.1 treat `push` as destructive. **Fixed spec → code** (moved `push` to Destructive Actions column). Appendix A pre-mortem actions (`force_push`, `reset_hard`, `branch_delete`, `remove`, `prune`) all match code entries; `push` covered in code + §5.1 + §2.7.
+
+**No code change required** — registry was already correct.
+
+---
+
+## GIT.push destructive-scope decision (2026-07-09)
+
+**Question:** Should `(ExecutorType.GIT, "push")` be unconditionally destructive, or confirm only on protected/default branches?
+
+**Part 1 findings:**
+- `branch_name` is already an **optional** DEV_TASK entity slot per spec §3.3 (`remote` is a planned param, not a router entity slot).
+- Entities flow: `IntentRouter` → `IntentObject.entities` → `BrainController` copies into `CommandPlan.params` — but no code resolves branch from the live repo today.
+- Current DEV_TASK git utterances route to `ExecutorType.SHELL` / action `git_push` (pre-GitExecutor); Phase 3 will use `ExecutorType.GIT` / action `push`.
+- `DESTRUCTIVE_ACTIONS` lookup is **flat set membership** `(executor, action) in frozenset` — cannot express branch predicates without a separate check function.
+
+**Options considered:** (a) unconditional forever; (b) branch-conditional predicate + fail-closed; (c) unconditional now, documented deferral.
+
+**Decision: option (c)** — keep `push` unconditionally destructive; document as deliberate; defer branch-awareness until GitExecutor + real usage.
+
+**Reasoning:** Safest default before any git voice command has run. Option (b) requires a predicate refactor and reliable `branch_name` at gate time (LLM extraction alone is insufficient; repo inspection at plan-build is not implemented). False-positive confirmation cost on feature-branch pushes accepted until usage justifies refinement.
+
+**Code change:** None — documentation only in `AURA_ENGINEERING_SPEC.md` §2.7, §5.1, Appendix A; comment in `command.py`.
 
 ---
 

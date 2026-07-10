@@ -54,7 +54,7 @@ def run_once(timeout: float = 120.0) -> dict:
     from main import _VOICE_SYSTEM_PROMPT
 
     cl._cache = None
-    config = load_config()
+    config = cl.load_config()
     mode_monitor.start()
 
     ollama = OllamaClient(config)

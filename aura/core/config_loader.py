@@ -120,6 +120,18 @@ _DEFAULTS: dict[str, Any] = {
         "max_bytes": 5_242_880,
         "backup_count": 5,
     },
+    "wake_word": {
+        "engine": "whisper",
+        "phrases": ["hey kommy", "kommy"],
+        "silence_timeout": 1.5,
+        "max_listen_duration": 12.0,
+        "post_listen_cooldown": 1.0,
+        "activate_without_phrase": True,
+        "min_command_chars": 10,
+        "vad_threshold": 0.008,
+        "vad_pre_frames": 3,
+        "no_speech_threshold": 0.3,
+    },
 }
 
 _cache: dict[str, Any] | None = None
