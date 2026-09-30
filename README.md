@@ -1,454 +1,150 @@
 <div align="center">
 
-<img src="docs/assets/AURA.jpg" alt="Kommy — AURA voice assistant" width="800"/>
+# Locus
 
-# Kommy
+### A private, offline-first assistant for your PC
 
-### Local voice assistant · powered by AURA
+**Type or speak a command. Locus does it, on your machine, without sending anything to the cloud.**
 
-**AURA** — Autonomous Unified Response Architecture — is the offline, layered system underneath. **Kommy** is the persona you talk to ("Hey Kommy").
-
-**Not another chatbot.** Kommy lives on your machine, executes real actions through sandboxed executors, and never phones home.
-
-![Build Status](https://github.com/aryanjsx/AURA/actions/workflows/ci.yml/badge.svg)
+![Status](https://img.shields.io/badge/status-planning-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
 ![License](https://img.shields.io/github/license/aryanjsx/AURA)
-![Stars](https://img.shields.io/github/stars/aryanjsx/AURA?style=social)
-![Issues](https://img.shields.io/github/issues/aryanjsx/AURA)
-![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
-**No cloud. No API keys. No subscriptions. No data leaving your machine. Ever.**
-
-**Topics:** `python` · `open-source` · `voice-assistant` · `kommy` · `local-llm` · `ollama` · `whisper` · `offline-ai` · `automation` · `developer-tools` · `piper-tts` · `chromadb` · `pyqt6` · `gitpython` · `docker-sdk` · `ai`
-
-[Get Started](#-getting-started) · [What It Can Do](#-what-kommy-can-do) · [Architecture](#-architecture) · [Roadmap](#-roadmap) · [Contribute](#-contributing)
+[Why Locus](#why-locus) · [MVP scope](#mvp-scope) · [Safety](#safety) · [Requirements](#system-requirements) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Docs](#documentation)
 
 </div>
 
-> **Credibility status (2026-07-08):** Phase 2 adversarial audit — 20/20 violations verified fixed (Fix 13 + independent gap-closure pass: dead-reference sweep, per-action SafetyGate traces, per-intent LLM/TTS traces). **629 tests passing.** Live end-to-end voice demo recording is tracked separately (see [Known gaps](#known-gaps)).
+---
+
+> **Project status: planning.** Locus is a fresh restart of this project, which was previously called AURA / Kommy. The requirements and scope are done; **there is no working Locus code yet.** The next step is a set of experiments to choose the models, then the first code milestone.
+>
+> The v1 (AURA / Kommy) code is still in this repository for reference and will be replaced. See [About v1](#about-v1).
 
 ---
 
-## The Problem
+## Why Locus
 
-Every "AI assistant" today is a chat window connected to someone else's server.
+Most AI assistants are a chat window connected to someone else's server. Locus is different:
 
-You type. It responds. That's it.
+- **Private by design:** everything runs locally. No accounts, no API keys, no telemetry.
+- **Offline first:** every core feature works with no internet connection. Online features are **off by default**, and you switch each one on yourself.
+- **Does things, not just talks:** checks your system, opens and closes apps, and manages files, as well as answering questions.
+- **Safe with your data:** anything destructive needs your manual confirmation, and deleted files always go to the Recycle Bin.
+- **Runs on ordinary laptops:** 8 GB of RAM is enough, no GPU needed.
 
-You can't tell it to **create a file on your desktop**. You can't ask it to **kill a runaway process**. You can't say **"open Chrome"** and have it happen. You can't speak a command and hear the answer.
+## MVP scope
 
-ChatGPT can't touch your filesystem. Copilot can't monitor your CPU. AutoGPT burns through API credits and still can't move a file.
+About 20 actions in three groups. Each command does one thing. The full list, with test phrases, is in the [command catalog](docs/locus/02-command-catalog.md).
 
-**AURA doesn't chat about doing things. It does them.**
-
----
-
-## What Makes AURA Different
-
-| | ChatGPT / Copilot | AutoGPT / AgentGPT | **AURA** |
-|---|---|---|---|
-| Runs locally | Cloud-only | Needs API keys | **Fully offline with Ollama** |
-| Executes system actions | Chat only | Unreliable | **File, process, shell, voice** |
-| Voice interface | No | No | **Whisper STT + TTS pipeline** |
-| Privacy | Data sent to servers | Data sent to servers | **Nothing leaves your machine** |
-| Security model | N/A | None | **Sandboxed, audited, policy-enforced** |
-| Cost | $20/mo+ | API credits | **Free forever** |
-| Works offline | No | No | **100% offline capable** |
-
----
-
-## What Kommy Can Do
-
-### Phase 1 — System Control (CLI)
-
-```
-> create file desktop/notes.txt
-File created: C:\Users\You\Desktop\notes.txt
-
-> cpu
-CPU: 23.4%
-
-> kill process chrome
-Process 'chrome' terminated.
-
-> create project desktop/my-app
-Project 'my-app' created with src/ tests/ README.md .gitignore requirements.txt
-
-> run command git status
-```
-
-### Phase 2 — Voice + Intelligence (verified in tests)
-
-Kommy hears you, classifies intent, runs commands through SafetyGate when destructive, streams LLM responses to TTS, and speaks back — all locally.
-
-**Verified pipeline paths** (unit/integration tests, 2026-07-08):
-
-| Utterance | Intent | SafetyGate | Output path |
-|---|---|---|---|
-| "What is Python?" | `GENERAL_KNOWLEDGE` | — | `llm_stream` → TTS |
-| "Write a function to sort a list" | `CODE_GENERATION` | — | `llm_stream` → TTS |
-| "Push my code to GitHub" | `DEV_TASK` | — | `ShellExecutor` → `tts.speak(output)` |
-| "What routes does my project have?" | `PROJECT_CONTEXT` | — | RAG hook → `llm_stream` → TTS |
-| "What's the latest Node.js version?" (online) | `REALTIME_QUERY` | — | `BrowserExecutor.search` → TTS |
-| "What's the latest Node.js version?" (offline) | `REALTIME_QUERY` | — | `llm_stream` + staleness warning → TTS |
-| "Shutdown the computer" | `SYSTEM_COMMAND` | **Yes** (8s timeout) | Cancelled without confirm |
-| "Restart the computer" | `SYSTEM_COMMAND` | **Yes** | Cancelled without confirm |
-| "Log off the computer" | `SYSTEM_COMMAND` | **Yes** | Cancelled without confirm |
-| "Close Chrome" | `SYSTEM_COMMAND` | **Yes** | Cancelled without confirm |
-| "Open Chrome" | `SYSTEM_COMMAND` | — | Executor dispatch |
-
-**Voice pipeline flow:**
-
-```
-Wake ("Hey Kommy") → STT → IntentRouter (regex → LLM fallback) → BrainController → SafetyGate (if destructive) → Execute / RAG augment / Stream LLM / Browser search → TTS
-```
-
-**Destructive commands always confirm** (shutdown, restart, log off, close app, kill process, shell, git push, docker remove — see `DESTRUCTIVE_ACTIONS` in `aura/schemas/command.py`):
-
-| Voice Command | What Happens |
+| Group | What you can ask |
 |---|---|
-| "Create a folder named X on desktop" | Creates the folder instantly |
-| "Delete file X from documents" | Deletes the file |
-| "Open Chrome / Notepad / any app" | Launches the application |
-| "Kill process chrome" | Asks for voice confirmation → terminates |
-| "CPU" / "RAM" | Speaks current system usage |
-| "Shutdown" / "Restart" | Asks for confirmation → executes |
+| **System info** | CPU, RAM, disk space, battery, top processes, date and time |
+| **Apps, files & power** | Open/close apps, open folders, create/rename/move/delete files and folders, search files, lock, shut down, restart |
+| **Q&A** | General questions and short code answers from a local language model |
 
-**Intent classification** uses a two-tier router (`aura/core/intent_router.py`):
+**How you talk to it:**
+- **Text first.** Voice uses exactly the same pipeline: speech is transcribed to text, then handled like typed text.
+- **Push-to-talk** hotkey for voice. A wake word ("Hey Locus") comes later.
+- **English only** in v1.
 
-1. **Fast regex** for obvious patterns (system commands, dev tasks, knowledge questions) — no LLM call
-2. **LLM fallback** for ambiguous input — 10s timeout, 3 retries, then `UNKNOWN`
+**Not in the MVP:** wake word, conversation memory, web search, Git/Docker/email/music integrations, multi-step commands, Linux/macOS. If you ask for something that needs the internet, Locus says *"I can't look that up yet"*; it never makes up live information.
 
-| Intent | Routed To | Example |
+## Safety
+
+| Risk level | What Locus does | Examples |
 |---|---|---|
-| `SYSTEM_COMMAND` | SystemExecutor / SystemMonitor | "Open Chrome", "Shutdown", "CPU" |
-| `CODE_GENERATION` | LLM stream (deepseek-coder) | "Write a REST endpoint in FastAPI" |
-| `GENERAL_KNOWLEDGE` | LLM stream (mistral) | "Explain Docker networking" |
-| `DEV_TASK` | ShellExecutor (allowlisted git/npm/docker) | "Push my code to GitHub" |
-| `VISION_TASK` | Vision executor (Phase 4) | "What's on my screen?" |
-| `PROJECT_CONTEXT` | RAG hook → LLM stream | "What routes does my project have?" |
-| `REALTIME_QUERY` | Browser search (online) or LLM + staleness warning (offline) | "What's the latest Node.js version?" |
-| `DEACTIVATE_SESSION` | Session controller | "Go to sleep", "That's all" |
-| `UNKNOWN` | RAG hook → LLM stream | Unrecognized input after LLM retries |
+| **Read-only** | Does it straight away | "What's my CPU?", "Find my resume" |
+| **Reversible** | Does it, then tells you what it did | "Open Chrome", "Create a folder called projects" |
+| **Check first** | Asks a question; answer within 15 s or it cancels | "Close Notepad" → *"Have you saved your work?"* |
+| **Destructive** | Shows exactly what will happen; **you must press the confirm key or click Confirm** within 15 s | Delete a file, shut down, restart |
 
----
+- **A spoken "yes" is never enough for destructive actions.** Confirmation is always a key press or click.
+- **Deletes go to the Recycle Bin.** If a drive has no Recycle Bin, Locus refuses rather than deleting permanently.
+- **System locations** (Windows, Program Files, whole user folders) get a clear red warning before you confirm.
+- Apps are always closed normally, never force-killed, so their own "Save changes?" dialog still appears.
+- Only **your own words** can trigger actions. Text that Locus reads can't.
+- Every destructive action is written to an audit log.
 
-## Architecture
+## System requirements
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    INPUT LAYER                       │
-│    CLI · "Hey Kommy" (Whisper) · CTRL+SPACE         │
-├─────────────────────────────────────────────────────┤
-│               VOICE PIPELINE (Phase 2)              │
-│  VAD → Wake Word → Whisper STT → Intent Router     │
-├─────────────────────────────────────────────────────┤
-│                 REASONING LAYER                      │
-│   OllamaClient (6 local models) · Intent Classifier │
-├─────────────────────────────────────────────────────┤
-│                 SAFETY LAYER                         │
-│  SafetyGate · Voice Confirmation · Audit Chain      │
-├─────────────────────────────────────────────────────┤
-│                EXECUTION LAYER                       │
-│  SystemExecutor · ShellExecutor · BrowserExecutor   │
-│  SystemMonitor · CommandPlan → Dispatch → Result    │
-├─────────────────────────────────────────────────────┤
-│                  PLUGIN LAYER                        │
-│  System · Git · Docker · Browser · Gmail · Spotify   │
-│  Vision · Weather · Calendar · Memory                │
-├─────────────────────────────────────────────────────┤
-│                  OUTPUT LAYER                        │
-│       Console · TTS (Edge/Piper/pyttsx3) · EventBus │
-└─────────────────────────────────────────────────────┘
-```
-
-**Wake word detection (three-tier fallback):**
-
-| Tier | Engine | How it works |
+| | Minimum | Recommended |
 |---|---|---|
-| **1 (default)** | Whisper keyword spotting | VAD detects speech → records 1.5s → Whisper transcribes → matches "Hey Kommy" + extracts command |
-| **2** | openwakeword | Lightweight ONNX model (auto-fallback if Whisper unavailable) |
-| **3** | CTRL+SPACE | Keyboard hotkey — always works alongside any voice tier |
+| OS | Windows 10/11 (64-bit) | Windows 11 (64-bit) |
+| RAM | 8 GB | 16 GB |
+| GPU | Not required | Not required |
+| CPU | 4 cores with AVX2 (≈2018+) | 6–8 cores (≈2020+) |
+| Free disk | ~5 GB | ~10 GB |
 
-**Performance characteristics (measured in tests, not marketing claims):**
-- **Single-shot wake + command** — "Hey Kommy, what is Python?" captured in one recording when wake tier extracts inline command
-- **Regex fast-path** — common intents classified without LLM round-trip
-- **Streaming LLM responses** — `_stream_to_tts()` sends sentence chunks to TTS as tokens arrive
-- **Model pre-warming** — primary model loaded at startup when Ollama is reachable
-- **System commands** — executor-backed intents bypass LLM when BrainController resolves a concrete action
+The planned Windows installer (`.exe`) will check your hardware on first run and **recommend the right models for your machine**. It downloads them only after you agree.
 
-**Key design decisions:**
-- The main process **never imports plugin code** — plugins run in isolated worker subprocesses over JSON IPC
-- **SafetyGate** (`aura/security/safety_gate.py`) enforces voice confirmation for destructive ops with 8s timeout-based denial
-- **EventBus** connects all modules via typed events — no direct coupling
-- **ModeMonitor** detects online/offline — switches TTS engines and routes `REALTIME_QUERY` (browser search vs offline LLM)
-- **RAG hook** (`aura/memory/context_retriever.py`) augments `PROJECT_CONTEXT` / `UNKNOWN` prompts when ChromaDB has stored context
-- **TTS failover chain:** Edge TTS (online) → Piper (offline) → pyttsx3 (fallback)
-- **Wake word shares the Whisper model** with STT — zero additional memory cost
-- **Typed schemas** — `IntentObject`, `CommandPlan`, `ExecutionResult` enforce contracts between layers
-- All config is centralized in `config.yaml` — no hardcoded values in source
+## Tech stack
 
----
+Planned. The model and engine choices are confirmed by benchmarks during the experiment phase.
 
-## Getting Started
-
-### Prerequisites
-
-- **Python 3.10+**
-- **Ollama** installed and running ([ollama.com](https://ollama.com))
-
-### Install
-
-```bash
-git clone https://github.com/aryanjsx/AURA.git
-cd AURA
-pip install -r requirements.txt
-```
-
-### Pull the Ollama models
-
-```bash
-ollama pull llama3.2:3b-q4_0          # Fast voice responses
-ollama pull mistral:7b-instruct-q4_0  # General reasoning (primary)
-ollama pull llama3:8b-q4_0            # Complex reasoning fallback
-ollama pull deepseek-coder:7b-q4_0    # Code generation
-ollama pull llava:7b                  # Vision (Phase 4)
-ollama pull nomic-embed-text          # Embeddings (Phase 6)
-```
-
-If your models are stored in a custom location (e.g., `D:\ollama\models`):
-
-```powershell
-$env:OLLAMA_MODELS="D:\ollama\models"
-```
-
-### Run
-
-```bash
-# Phase 2 — Voice pipeline (full experience)
-python main.py
-
-# Phase 1 — CLI mode (text commands only)
-python -m aura
-python -m aura --yes "cpu"
-```
-
-Say **"Hey Kommy"** to activate voice input, or press **CTRL+SPACE** as a manual fallback. Speak your command and AURA responds.
-
-### Quick Reference
-
-**Voice commands** (say "Hey Kommy" then speak naturally):
-
-| Category | Voice Examples |
+| Layer | Choice |
 |---|---|
-| **Files** | "Create a folder named project on desktop", "Delete file notes.txt from documents" |
-| **Apps** | "Open Chrome", "Open Notepad", "Launch VS Code" |
-| **System** | "CPU", "RAM", "Kill process chrome" |
-| **Questions** | "What is Python?", "Explain Docker networking" |
-| **Code** | "Write a function to sort a list" |
+| Language | Python 3.12 |
+| LLM engine | [`llama.cpp`](https://github.com/ggml-org/llama.cpp), bundled in the installer |
+| LLM models (candidates) | 8 GB: Qwen3.5 2B / Gemma 4 E2B / Llama 3.2 3B · 16 GB: Qwen3.5 4B / Gemma 4 E4B / Phi-4-mini |
+| Command routing | Structured JSON output (schema-constrained) + exact-match fast path for common commands |
+| Speech-to-text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (`base.en` / `small.en`); Moonshine as an alternative |
+| Text-to-speech | Piper (default), Kokoro (optional on 16 GB), Windows voices as fallback |
+| System access | `psutil`, `send2trash`, `pycaw`, `subprocess` (argument lists only, no shell) |
+| Schemas and config | Pydantic v2, TOML |
+| Audio / hotkey | `sounddevice`, `pynput` |
+| Tooling | uv, Ruff, Pyright, pytest, pre-commit, GitHub Actions, Conventional Commits |
 
-**CLI commands** (via `python -m aura`):
-
-| Category | Commands |
-|---|---|
-| **Files** | `create file`, `delete file`, `rename file`, `move file`, `search files` |
-| **System** | `cpu`, `ram`, `list processes`, `check system health`, `kill process` |
-| **Projects** | `create project <path>` |
-| **Shell** | `run command <cmd>` (allowlisted: git, npm, docker) |
-| **npm** | `npm install [path]`, `npm run <script>` |
-
----
-
-## Project Structure
+**Architecture:** one pipeline for every input:
 
 ```
-AURA/
-├── aura/
-│   ├── core/
-│   │   ├── config_loader.py    # YAML config with strict validation
-│   │   ├── ollama_client.py    # Ollama API client with streaming
-│   │   ├── intent_router.py    # Two-tier intent classification (regex + LLM)
-│   │   ├── llm_brain.py        # Plan builder + model selector (not LLM caller)
-│   │   ├── command_engine.py   # Intent → CommandPlan → Executor dispatch
-│   │   ├── session_controller.py # Session lifecycle (active/sleep/wake)
-│   │   ├── event_bus.py        # Singleton pub/sub event system
-│   │   ├── errors.py           # Custom exception hierarchy
-│   │   └── ...
-│   ├── security/
-│   │   ├── safety_gate.py      # Voice + CLI confirmation, audit logging
-│   │   └── ...                 # Sandbox, audit, policy enforcement
-│   ├── executors/
-│   │   ├── system_executor.py  # OS-level: open/close apps, volume, shutdown
-│   │   ├── shell_executor.py   # Allowlisted shell commands (git, npm, docker)
-│   │   ├── browser_executor.py # HTTPS live search for REALTIME_QUERY (online)
-│   │   └── system_monitor.py   # CPU, RAM, battery, disk, processes
-│   ├── memory/
-│   │   └── context_retriever.py # RAG retrieval hook (ChromaDB when available)
-│   ├── schemas/
-│   │   ├── intent.py           # IntentObject, IntentType enum (canonical)
-│   │   └── command.py          # CommandPlan, ExecutionResult, DESTRUCTIVE_ACTIONS
-│   ├── modules/
-│   │   ├── stt.py              # Whisper speech-to-text engine
-│   │   ├── tts.py              # Multi-engine text-to-speech
-│   │   └── wake_word.py        # Whisper wake word + CTRL+SPACE fallback
-│   ├── utils/
-│   │   ├── mic_lock.py         # Shared mic mutex (wake word vs SafetyGate STT)
-│   │   ├── app_registry.py     # Application name → executable resolution
-│   │   └── mode_monitor.py     # Online/offline detection daemon
-│   └── runtime/                # CLI execution engine, planner, worker IPC
-├── docs/
-│   ├── decisions/naming.md     # Kommy vs AURA naming ADR
-│   └── assets/                 # README / site media
-├── AURA_ENGINEERING_SPEC.md    # Phase 2 engineering contract
-├── CHANGELOG.md
-├── plugins/
-│   ├── system/                 # File, process, shell operations
-│   ├── git/                    # Git automation
-│   ├── docker/                 # Docker lifecycle management
-│   ├── browser/                # Web automation (Playwright)
-│   ├── vision/                 # Screen capture + LLaVA
-│   ├── gmail/                  # Email integration
-│   ├── spotify/                # Music control
-│   ├── calendar/               # Calendar events
-│   ├── weather/                # Weather queries
-│   └── memory/                 # ChromaDB semantic memory
-├── tests/
-│   ├── test_phase2_audit_part1.py  # EventBus, ModeMonitor, Ollama, Router
-│   ├── test_phase2_audit_part2.py  # STT, WakeWord, TTS, Config, Safety
-│   ├── test_destructive_gate.py    # DESTRUCTIVE_ACTIONS → SafetyGate (all pairs)
-│   ├── test_violation2_closure.py  # RAG hook + REALTIME online/offline routing
-│   ├── test_voice_destructive_path.py  # Voice utterances → SafetyGate
-│   ├── test_safety_gate.py         # Confirmation tokens, timeout, audit
-│   ├── test_system_executor.py     # SystemExecutor, ShellExecutor
-│   └── fixtures/               # Test audio files, bad config
-├── scripts/
-│   ├── fix13_verify.py         # Fix 13 — 20-violation verification pass
-│   └── phase2_integration_test.py
-├── config.example.yaml         # Tracked template (copy to config.yaml)
-├── main.py                     # Phase 2 voice pipeline entry point
-└── requirements.txt
+Input (text / voice) → Router → Safety gate → Action registry → Output (screen / speech)
 ```
 
----
-
-## Test Suite
-
-**629 tests passing** (4 skipped) as of 2026-07-08. Run: `python -m pytest tests/ -q`
-
-| Section | Tests | Status | Audit contract covered |
-|---|---|---|---|
-| EventBus (happy + adversarial) | 14 | Pass | Thread safety, handler isolation |
-| ModeMonitor (happy + adversarial) | 7 | Pass | ONLINE/OFFLINE transitions |
-| OllamaClient (happy + adversarial) | 8 | Pass | Retry count, unavailable error |
-| IntentRouter + IntentObject | 13 | Pass | Schema fields, two-tier classify |
-| STTEngine (happy + adversarial) | 13 | Pass | Never raises, concurrent isolation |
-| WakeWordListener (happy + adversarial) | 11 | Pass | Non-blocking start, mic errors |
-| TTSEngine (happy + adversarial) | 9 | Pass | Queue, interrupt, fallback chain |
-| SystemExecutor + ShellExecutor | 27 | Pass | Actions, shell allowlist |
-| SafetyGate | 14 | Pass | Tokens, timeout, audit on CLI path |
-| Destructive gate (all DESTRUCTIVE_ACTIONS) | parametric | Pass | Re-derives `is_destructive` |
-| Violation #2 closure (RAG + REALTIME) | 9 | Pass | RAG flags, browser/offline branches |
-| Voice destructive path | 4 | Pass | shutdown/restart/log_off/close_app utterances |
-| SessionController | 12 | Pass | Lifecycle, inactivity, mic pause |
-| Config validation | 12 | Pass | Required keys, env overrides, `config.example.yaml` |
-| Safety (static analysis) | 5 | Pass | No shell=True, eval/exec, subprocess f-strings |
-| Regression guards | 5 | Pass | Singleton bus, layer boundaries |
-
-**Security verified (static + unit tests):** `shell=True` = 0 and `eval(`/`exec(` = 0 in `aura/` production code; subprocess uses list form; STTEngine does not write recordings to disk; schema consolidation confirmed. Layer-boundary enforcement is tested via import guards in `test_phase2_audit_part2.py`.
-
----
-
-## Known gaps
-
-| Gap | Status |
-|---|---|
-| Live wake-word → audible TTS screen recording for README | Not yet recorded — requires manual capture session |
-| ChromaDB memory population (RAG returns context) | Hook implemented; install `chromadb` + index project docs for live retrieval |
-| GitHub Pages demo embed | Pending live demo clip |
-| macOS/Linux wake-word CI matrix | Tracked in [#2](https://github.com/aryanjsx/AURA/issues/2) |
-| Voice-path SafetyGate audit-log assertions | Tracked in [#3](https://github.com/aryanjsx/AURA/issues/3) |
-
----
+Features are plugins: Python modules that register actions, each with a name, a parameter schema and a risk level.
 
 ## Roadmap
 
-| Phase | What Ships | Status |
+| Stage | Deliverable | Status |
 |---|---|---|
-| **Phase 0 — Core Infrastructure** | Event bus, config, registry, CLI, execution backbone | Done |
-| **Phase 1 — System Plugin** | File/process/npm operations, sandbox, permissions, audit chain | Done |
-| **Phase 2 — Voice + Intelligence** | Whisper STT, Ollama LLM routing, TTS, intent classification, executors, safety gate, RAG hook, realtime browser search | Done — 20/20 audit violations verified (2026-07-08) |
-| **Phase 3 — Dev Tools** | Git automation, Docker lifecycle, browser automation | Next |
-| **Phase 4 — Vision** | Screen capture, OCR, visual reasoning with LLaVA | Planned |
-| **Phase 5 — GUI Dashboard** | PyQt6 desktop interface with live command log | Planned |
-| **Phase 6 — Memory + RAG** | ChromaDB indexing, conversation history, memory event subscribers | Partial — retrieval hook + config scaffold in Phase 2 |
-| **Phase 7 — Browser Automation** | Sandboxed web research with Playwright | Partial — DuckDuckGo search for `REALTIME_QUERY` (online) |
-| **Phase 8 — Integrations** | Spotify, Weather, Calendar, Gmail bridges | Planned |
+| **Planning** | Scope, safety policy, stack, command catalog | ✅ Done |
+| **Experiments** | Benchmark LLM routing accuracy, speech-to-text and TTS speed, and peak RAM on real hardware | ⏳ Next |
+| **M0: skeleton** | Typed "what's my CPU" → spoken answer, through the full pipeline | Planned |
+| **M1: voice** | Push-to-talk voice input | Planned |
+| **M2: Q&A** | Local LLM answers streamed to speech | Planned |
+| **M3: safety** | Confirmation flow and audit log | Planned |
+| **M4: MVP** | Every command in the catalog working end to end | Planned |
+| **M5: installer** | Windows `.exe` with hardware check and model recommendation | Planned |
+| **Later** | Web search (opt-in), wake word, Linux/macOS, more integrations | Future |
 
----
+A feature counts as done only when its catalog tests pass end to end through the real app. This README lists only features that meet that bar.
 
-## Philosophy
+## Documentation
 
-> **"If it needs the internet to think, it's not your AI."**
+- [Scope (MVP)](docs/locus/01-scope.md): vision, hardware tiers, safety and privacy policy, quality targets, decisions log
+- [Command catalog](docs/locus/02-command-catalog.md): every MVP action and its test phrases, including tricky near-misses
 
-1. **Local-first** — No cloud dependency. No API keys. Works on airplane mode.
-2. **Actions over answers** — AURA doesn't explain how to create a file. It creates the file.
-3. **Security is non-negotiable** — Sandboxed execution, tamper-evident audit logs, hash-chained integrity.
-4. **Modular by design** — Every capability is a plugin. Add what you need. Remove what you don't.
-5. **Developer-owned** — Open source. No telemetry. No tracking. Your machine, your rules.
+## About v1
 
----
+This repo originally contained **AURA / Kommy**, a first attempt at the same idea. It's being restarted as Locus because:
+
+- the voice pipeline and the text CLI were two separate systems, and the voice path skipped the security layer;
+- several advertised voice commands didn't actually work end to end;
+- the regex-based command routing misread everyday phrases.
+
+The v1 code is still here for reference and will be removed as Locus replaces it.
 
 ## Contributing
 
-Kommy is open source under MIT. If any of the [GitHub topics](https://github.com/aryanjsx/AURA/topics) above match your stack, there is a concrete place to contribute — no prior AURA experience required.
+Locus is at the planning stage. Feedback on the [scope](docs/locus/01-scope.md) and [command catalog](docs/locus/02-command-catalog.md) is very welcome, especially new test phrases and tricky edge cases. Please open an [issue](https://github.com/aryanjsx/AURA/issues).
 
-**Quick start:** [Fork](https://github.com/aryanjsx/AURA/fork) → clone → branch → PR. Stars help others find the project on GitHub Explore and in topic searches (`voice-assistant`, `local-llm`, `ollama`, etc.).
+## License
 
-| If you know… | Start here | Example contribution |
-|---|---|---|
-| `python` / `open-source` | `tests/`, `docs/`, issue triage | Fix a test, improve CONTRIBUTING |
-| `whisper` / `voice-assistant` | `aura/modules/stt.py`, `wake_word.py` | Wake-word accuracy, mic handling ([#2](https://github.com/aryanjsx/AURA/issues/2)) |
-| `ollama` / `local-llm` / `ai` | `aura/core/ollama_client.py`, `intent_router.py` | Prompt tuning, router edge cases |
-| `piper-tts` / offline TTS | `aura/modules/tts.py` | Engine fallback, temp-file cleanup |
-| `automation` / `developer-tools` | `aura/executors/`, `plugins/system/` | New system commands, executor tests |
-| `gitpython` / `docker-sdk` | `plugins/git/`, `plugins/docker/` | Phase 3 plugin stubs → working commands |
-| `chromadb` | `aura/memory/`, `plugins/memory/` | Index project docs, memory event subscribers (Phase 6) |
-| `pyqt6` | `aura/gui/` (planned) | Phase 5 dashboard mockups |
-
-1. Fork the repo
-2. Create your branch (`git checkout -b feat/amazing-feature`)
-3. Commit with [Conventional Commits](https://www.conventionalcommits.org/) (`feat(core): add amazing feature`)
-4. Push and open a Pull Request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines. Starter issues: `good first issue` ([#2](https://github.com/aryanjsx/AURA/issues/2)) · `help wanted` ([#3](https://github.com/aryanjsx/AURA/issues/3)).
-
-**Active areas where we need help:**
-- Plugin development (Git, Docker, Browser, Gmail, Spotify)
-- Ollama prompt engineering for developer tasks
-- Cross-platform testing (macOS, Linux)
-- Test coverage expansion
-- GUI dashboard design (Phase 5)
-
----
-
-## Star & fork
-
-If Kommy's vision resonates — local AI that **executes real actions** and **respects your privacy** — a star or fork takes one second and helps this repo surface in GitHub topic feeds for `offline-ai`, `voice-assistant`, and `local-llm`.
-
-[![Star this repo](https://img.shields.io/github/stars/aryanjsx/AURA?style=for-the-badge&logo=github&label=Star%20Kommy&color=yellow)](https://github.com/aryanjsx/AURA/stargazers)
-[![Fork this repo](https://img.shields.io/github/forks/aryanjsx/AURA?style=for-the-badge&logo=github&label=Fork&color=555)](https://github.com/aryanjsx/AURA/fork)
-
----
+MIT, see [LICENSE](LICENSE).
 
 <div align="center">
 
-**Kommy** — local voice assistant · **AURA** — Autonomous Unified Response Architecture
+**Locus**: your assistant, on your machine.
 
-Built offline. Powered locally. Yours completely.
-
-See [CHANGELOG.md](CHANGELOG.md) · [Naming ADR](docs/decisions/naming.md)
-
-[GitHub](https://github.com/aryanjsx/AURA) · [Issues](https://github.com/aryanjsx/AURA/issues) · [Contributing](CONTRIBUTING.md) · [Roadmap](ROADMAP.md)
-
-MIT License — Built by [@aryanjsx](https://github.com/aryanjsx)
+Built by [@aryanjsx](https://github.com/aryanjsx)
 
 </div>
