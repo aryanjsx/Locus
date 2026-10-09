@@ -28,7 +28,7 @@ A **destructive false positive** is when the model picks delete, shut down or re
    ```powershell
    $env:LOCUS_LLAMA_SERVER = "C:\tools\llama.cpp\llama-server.exe"
    ```
-4. **Get the models** (GGUF, Q4_K_M) into `experiments/models/`. [`config/models.toml`](config/models.toml) lists the candidates. Entries with `repo` and `file` filled in download automatically with `--download`. For entries marked `VERIFY`, find the exact file on Hugging Face first and fill in the fields.
+4. **Get the models** (GGUF, Q4_K_M) into `experiments/models/`. [`config/models.toml`](config/models.toml) lists the six candidates, with verified Hugging Face names; add `--download` to the router command and missing files download automatically (about 15 GB for all six). Two Gemma models are bigger than their tier's RAM budget and are only there to compare accuracy.
 5. **Voices for Experiment 3:**
    - Piper: `en_US-lessac-medium.onnx` and its `.onnx.json` from [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
    - Kokoro: `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the [kokoro-onnx releases](https://github.com/thewh1teagle/kokoro-onnx/releases).
