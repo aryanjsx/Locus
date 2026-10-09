@@ -107,7 +107,7 @@ Features are plugins: Python modules that register actions, each with a name, a 
 | Stage | Deliverable | Status |
 |---|---|---|
 | **Planning** | Scope, safety policy, stack, command catalog | ✅ Done |
-| **Experiments** | Benchmark LLM routing accuracy, speech-to-text and TTS speed, and peak RAM on real hardware | ⏳ Next |
+| **Experiments** | Benchmark LLM routing accuracy, speech-to-text and TTS speed, and peak RAM on real hardware ([harness](experiments/README.md)) | 🔬 In progress |
 | **M0: skeleton** | Typed "what's my CPU" → spoken answer, through the full pipeline | Planned |
 | **M1: voice** | Push-to-talk voice input | Planned |
 | **M2: Q&A** | Local LLM answers streamed to speech | Planned |
@@ -122,6 +122,7 @@ A feature counts as done only when its catalog tests pass end to end through the
 
 - [Scope (MVP)](docs/locus/01-scope.md): vision, hardware tiers, safety and privacy policy, quality targets, decisions log
 - [Command catalog](docs/locus/02-command-catalog.md): every MVP action and its test phrases, including tricky near-misses
+- [Experiments](experiments/README.md): the stage 2 benchmarks (router accuracy, speech-to-text, TTS, peak RAM) and how to run them
 
 ## About v1
 

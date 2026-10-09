@@ -1,0 +1,16 @@
+# Large downloads
+models/
+
+# Your voice recordings stay on your machine
+data/audio/
+
+# Saved TTS samples and server logs inside result folders
+results/**/audio/
+results/**/*.server.log
+results/**/server.log
+
+# Python / uv
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

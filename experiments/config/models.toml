@@ -1,0 +1,52 @@
+# Candidate LLMs for Experiment 1. All GGUF, Q4_K_M quantisation.
+#
+# `path` is where the file lives (relative to experiments/). `repo` and `file` are
+# optional: if set, `--download` fetches the file from Hugging Face.
+# Entries marked VERIFY need the exact repo/file name checked on huggingface.co
+# before downloading. Names change often; don't trust these blindly.
+
+# ---- 8 GB tier ----
+
+[[model]]
+id = "llama3.2-3b"
+tier = "8gb"
+path = "models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+repo = "bartowski/Llama-3.2-3B-Instruct-GGUF"
+file = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+
+[[model]]
+id = "qwen3.5-2b"
+tier = "8gb"
+path = "models/qwen3.5-2b-instruct-q4_k_m.gguf"
+repo = ""  # VERIFY: find the official/bartowski Qwen3.5 2B GGUF repo
+file = ""
+
+[[model]]
+id = "gemma4-e2b"
+tier = "8gb"
+path = "models/gemma-4-e2b-it-q4_k_m.gguf"
+repo = ""  # VERIFY: find the Gemma 4 E2B instruct GGUF repo
+file = ""
+
+# ---- 16 GB tier ----
+
+[[model]]
+id = "qwen3.5-4b"
+tier = "16gb"
+path = "models/qwen3.5-4b-instruct-q4_k_m.gguf"
+repo = ""  # VERIFY: find the official/bartowski Qwen3.5 4B GGUF repo
+file = ""
+
+[[model]]
+id = "gemma4-e4b"
+tier = "16gb"
+path = "models/gemma-4-e4b-it-q4_k_m.gguf"
+repo = ""  # VERIFY: find the Gemma 4 E4B instruct GGUF repo
+file = ""
+
+[[model]]
+id = "phi4-mini"
+tier = "16gb"
+path = "models/microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"
+repo = "bartowski/microsoft_Phi-4-mini-instruct-GGUF"  # VERIFY
+file = "microsoft_Phi-4-mini-instruct-Q4_K_M.gguf"

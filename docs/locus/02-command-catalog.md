@@ -7,7 +7,7 @@ This catalog is the **requirements, the test set and the demo script** in one:
 - Every row becomes an automated test: `utterance → expected action + params`.
 - The router must reach the accuracy targets in the scope doc (§8).
 - Rows marked **⚠ near-miss** contain words that fooled v1's regex router. They are the most important rows.
-- For the eval harness, this table will later be exported to `tests/eval/catalog.jsonl`.
+- The machine-readable version, with paraphrases and extra near-misses (131 phrases), is [`experiments/data/catalog.jsonl`](../../experiments/data/catalog.jsonl). The router benchmark scores against it.
 
 ## Action list
 
@@ -146,6 +146,8 @@ This catalog is the **requirements, the test set and the demo script** in one:
 
 ## Next steps
 
-1. Add 2–3 **paraphrases** per action (target: 150–200 rows) so accuracy isn't measured on a handful of phrasings.
-2. Record **10–20 of these as WAV files** (different voices and rooms) for the voice end-to-end tests.
-3. Export to `tests/eval/catalog.jsonl` and use it for **Experiment 1** (model routing accuracy).
+1. ✅ Paraphrases and extra near-misses added: 131 phrases in [`experiments/data/catalog.jsonl`](../../experiments/data/catalog.jsonl).
+2. Record **15 phrases per speaker** (at least 2 speakers, different rooms) with `python -m bench.record` for Experiment 2.
+3. Keep growing the catalog with phrases that real users say, especially any that a model gets wrong.
+
+**Schema note:** in the benchmark, `qa.answer` takes no params; the question is simply the user's text. This saves the model from copying the whole question on a CPU.
