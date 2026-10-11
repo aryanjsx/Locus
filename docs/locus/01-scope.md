@@ -120,7 +120,11 @@ Everything is measured on the **weakest machine available**, not only the develo
 
 ## 9. Distribution (post-MVP)
 
-- A **Windows `.exe` installer** once the MVP is stable.
+- **Two ways to install, one build.** Once the MVP is stable, Locus ships as:
+  - a **Windows `.exe` installer** for most people (download from the website);
+  - a **command-line install** for people who prefer the terminal.
+
+  Both install exactly the same signed build. The command-line route downloads and runs the `.exe` (or its silent mode), so there's only one artifact to build, sign and test. The install method is still open (O6).
 - **First-run setup:** detect RAM, CPU (AVX2) and free disk, **recommend models for that tier**, and download them only after the user agrees.
 - **The installer bundles the LLM engine (`llama.cpp`).** Users don't install anything else.
 - Implications to decide early (see open decisions):
@@ -155,6 +159,7 @@ Everything is measured on the **weakest machine available**, not only the develo
 | D20 | Closing an app is "check first", not destructive: ask about unsaved work, 15 s, graceful close only | 2026-09-30 |
 | D21 | No online features in the MVP: internet-only requests get "I can't look that up yet"; web search is the first post-MVP feature | 2026-09-30 |
 | D22 | Name: **Locus** (app, assistant and repo); replaces AURA/Kommy | 2026-09-30 |
+| D23 | Install either with the `.exe` or from the command line; both deliver the same build | 2026-10-11 |
 
 ## 11. Open decisions (settled by experiments)
 
@@ -165,3 +170,4 @@ Everything is measured on the **weakest machine available**, not only the develo
 | O3 | TTS: Piper vs Kokoro (16 GB tier) | Experiment 3 |
 | O4 | Embed `llama.cpp` as `llama-server` child process (recommended) or `llama-cpp-python` bindings | ADR during experiment 1 |
 | O5 | Confirm key: Enter vs a dedicated combo (e.g. Ctrl+Enter) | Usability test |
+| O6 | Command-line install method: **winget** (`winget install Locus`, built into Windows 10/11, recommended) and/or a PowerShell script from the website (`irm https://aryanjsx.github.io/Locus/install.ps1 \| iex`, checks the download's hash) | Decide before the first release; winget needs the release `.exe` submitted to the winget-pkgs repo |

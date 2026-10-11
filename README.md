@@ -75,7 +75,7 @@ About 20 actions in three groups. Each command does one thing. The full list, wi
 | CPU | 4 cores with AVX2 (≈2018+) | 6–8 cores (≈2020+) |
 | Free disk | ~5 GB | ~10 GB |
 
-The planned Windows installer (`.exe`) will check your hardware on first run and **recommend the right models for your machine**. It downloads them only after you agree.
+You'll be able to install Locus two ways: with the **Windows installer (`.exe`)** from the [website](https://aryanjsx.github.io/Locus/), or **from the command line**. Both install the same build. On first run, Locus checks your hardware and **recommends the right models for your machine**. It downloads them only after you agree.
 
 ## Tech stack
 
@@ -113,7 +113,7 @@ Features are plugins: Python modules that register actions, each with a name, a 
 | **M2: Q&A** | Local LLM answers streamed to speech | Planned |
 | **M3: safety** | Confirmation flow and audit log | Planned |
 | **M4: MVP** | Every command in the catalog working end to end | Planned |
-| **M5: installer** | Windows `.exe` with hardware check and model recommendation | Planned |
+| **M5: install** | Windows `.exe` and command-line install, with hardware check and model recommendation | Planned |
 | **Later** | Web search (opt-in), wake word, Linux/macOS, more integrations | Future |
 
 A feature counts as done only when its catalog tests pass end to end through the real app. This README lists only features that meet that bar.
