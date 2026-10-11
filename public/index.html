@@ -1,510 +1,231 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Kommy — local voice assistant powered by AURA (Autonomous Unified Response Architecture). Runs locally. No cloud."
-    />
-    <meta name="theme-color" content="#08090e" />
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-    <title>AURA — AI that actually does things</title>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Locus: a private assistant for your PC</title>
+  <meta name="description" content="Locus is a free, open-source assistant for Windows. Type or say what you need and it does it on your PC, offline. No account, no cloud, no telemetry.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141412" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="Locus: a private assistant for your PC">
+  <meta property="og:description" content="Type or say what you need and Locus does it on your PC, offline. Free and open source.">
+  <meta property="og:url" content="https://aryanjsx.github.io/Locus/">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+  <header class="site-header">
+    <div class="wrap site-header__inner">
+      <a class="brand" href="./" aria-label="Locus home">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="10" fill="none" stroke="currentColor" stroke-width="2.4"/>
+          <circle cx="16" cy="16" r="4" class="brand__dot"/>
+        </svg>
+        Locus
+      </a>
+      <nav aria-label="Main">
+        <ul class="nav">
+          <li><a href="#what">What it does</a></li>
+          <li><a href="#privacy">Privacy</a></li>
+          <li><a href="#safety">Safety</a></li>
+          <li><a href="#requirements">Requirements</a></li>
+          <li><a href="https://github.com/aryanjsx/Locus">GitHub</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
 
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="noise" aria-hidden="true"></div>
-
-    <!-- NAVBAR -->
-    <header class="nav" id="nav">
-      <div class="nav__inner">
-        <a href="#" class="nav__brand">
-          <span class="nav__logo" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="3" fill="url(#logo-g)" />
-              <circle cx="10" cy="10" r="7" stroke="url(#logo-g)" stroke-width="1.5" opacity=".5" />
-              <defs>
-                <linearGradient id="logo-g" x1="0" y1="0" x2="20" y2="20">
-                  <stop stop-color="#6366f1" />
-                  <stop offset="1" stop-color="#06b6d4" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </span>
-          AURA
-        </a>
-
-        <nav class="nav__links" id="navLinks" aria-label="Primary">
-          <a href="#demo">Demo</a>
-          <a href="#compare">Compare</a>
-          <a href="#how">How It Works</a>
-          <a href="#capabilities">Capabilities</a>
-        </nav>
-
-        <div class="nav__right">
-          <a
-            href="https://github.com/aryanjsx/AURA"
-            target="_blank"
-            rel="noopener"
-            class="btn btn--sm btn--ghost"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 .5C5.73.5.67 5.56.67 11.83c0 5.02 3.24 9.26 7.75 10.76.57.1.78-.25.78-.55v-2c-3.15.68-3.82-1.35-3.82-1.35-.52-1.3-1.27-1.65-1.27-1.65-1.04-.71.08-.7.08-.7 1.15.08 1.75 1.18 1.75 1.18 1.02 1.74 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.16-3.04-.12-.29-.5-1.44.11-3 0 0 .95-.3 3.1 1.16.9-.25 1.87-.37 2.83-.38.96.01 1.93.13 2.83.38 2.15-1.46 3.1-1.16 3.1-1.16.61 1.56.23 2.71.11 3 .72.79 1.16 1.8 1.16 3.04 0 4.35-2.66 5.31-5.19 5.59.41.35.78 1.05.78 2.12v3.14c0 .3.21.66.79.55 4.51-1.5 7.74-5.74 7.74-10.76C23.33 5.56 18.27.5 12 .5z"/>
-            </svg>
-            Star on GitHub
-          </a>
-
-          <button
-            class="nav__toggle"
-            id="navToggle"
-            aria-label="Toggle menu"
-            aria-expanded="false"
-          >
-            <span></span><span></span>
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <!-- ===================== 1. HERO ===================== -->
-    <section class="hero">
-      <div class="hero__glow" aria-hidden="true"></div>
-      <div class="container hero__inner">
-        <div class="hero__badge reveal">
-          <span class="pulse-dot"></span>
-          Open Source &middot; Local-First &middot; System-Level AI
-        </div>
-
-        <h1 class="hero__title reveal">
-          Your AI that<br />
-          <span class="gradient-text">actually does things.</span>
-        </h1>
-
-        <p class="hero__sub reveal">
-          Runs locally. Controls your system. No cloud. No limits.
+  <main id="main">
+    <section class="hero wrap">
+      <div class="hero__text">
+        <p class="eyebrow">For Windows · in development</p>
+        <h1>A desktop assistant that stays on your desktop.</h1>
+        <p class="lede">
+          Type or say what you need, like <q>what's using my memory?</q> or
+          <q>move invoice.pdf to Documents</q>, and Locus does it on your PC.
+          No account, no cloud, nothing sent anywhere.
         </p>
 
-        <div class="hero__actions reveal">
-          <a href="#demo" class="btn btn--primary">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <polygon points="5,3 19,12 5,21" />
-            </svg>
-            Watch it work
+        <div class="cta">
+          <a class="button button--primary" data-download
+             href="https://github.com/aryanjsx/Locus/releases">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 15.5h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span data-download-label>Download for Windows</span>
           </a>
-          <a
-            href="https://github.com/aryanjsx/AURA"
-            target="_blank"
-            rel="noopener"
-            class="btn btn--ghost"
-          >
-            Get Started
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-              <path d="M5 12h14M13 5l7 7-7 7"/>
-            </svg>
-          </a>
+          <a class="button button--quiet" href="https://github.com/aryanjsx/Locus">Source code</a>
         </div>
+        <p class="cta__note" data-download-note>Free and open source · Windows 10 and 11 · 8 GB RAM, no GPU</p>
 
-        <div class="hero__stats reveal">
-          <div class="stat">
-            <span class="stat__value">100%</span>
-            <span class="stat__label">Local</span>
-          </div>
-          <div class="stat__divider" aria-hidden="true"></div>
-          <div class="stat">
-            <span class="stat__value">Zero</span>
-            <span class="stat__label">API Keys</span>
-          </div>
-          <div class="stat__divider" aria-hidden="true"></div>
-          <div class="stat">
-            <span class="stat__value">Real</span>
-            <span class="stat__label">Execution</span>
-          </div>
-          <div class="stat__divider" aria-hidden="true"></div>
-          <div class="stat">
-            <span class="stat__value">&infin;</span>
-            <span class="stat__label">Privacy</span>
-          </div>
+        <div class="soon" data-download-soon hidden>
+          <p><strong>The first build isn't out yet.</strong> Locus is still being built; right now
+            we're testing which language models run well on ordinary laptops.</p>
+          <p>To hear when it ships, open the
+            <a href="https://github.com/aryanjsx/Locus">repository on GitHub</a> and choose
+            <b>Watch → Custom → Releases</b>. GitHub will email you on release day. This button
+            will start the download from then on.</p>
+        </div>
+      </div>
+
+      <figure class="demo" aria-label="Interactive preview of Locus">
+        <div class="demo__bar">
+          <span class="demo__title">Locus</span>
+          <span class="demo__status"><span class="dot" aria-hidden="true"></span>Offline · on this PC</span>
+        </div>
+        <ol class="demo__log" data-demo-log aria-live="polite"></ol>
+        <div class="demo__try">
+          <p class="demo__label" id="try-label">Try a command</p>
+          <div class="chips" role="group" aria-labelledby="try-label" data-demo-chips></div>
+        </div>
+        <figcaption>A scripted preview of how Locus is designed to respond.</figcaption>
+      </figure>
+    </section>
+
+    <section id="what" class="section wrap">
+      <h2>What you can ask</h2>
+      <p class="section__lede">Plain sentences, one thing at a time. If it can't do something,
+        it says so instead of guessing.</p>
+      <div class="columns">
+        <div class="column">
+          <h3>Your system</h3>
+          <ul class="examples">
+            <li>what's my CPU at</li>
+            <li>how much space is left on C</li>
+            <li>what's slowing my computer down</li>
+            <li>how much battery do I have</li>
+          </ul>
+        </div>
+        <div class="column">
+          <h3>Apps and files</h3>
+          <ul class="examples">
+            <li>open VS Code</li>
+            <li>make a folder called invoices in Documents</li>
+            <li>find my resume</li>
+            <li>move photo.jpg from Downloads to Pictures</li>
+            <li>lock my PC</li>
+          </ul>
+        </div>
+        <div class="column">
+          <h3>Questions</h3>
+          <ul class="examples">
+            <li>what's the difference between TCP and UDP</li>
+            <li>write a SQL query that finds duplicate emails</li>
+            <li>how do I rename a file in Python</li>
+          </ul>
+          <p class="column__note">Answered by a language model running on your own machine.</p>
         </div>
       </div>
     </section>
 
-    <!-- ===================== 2. DEMO ===================== -->
-    <section id="demo" class="section">
-      <div class="container">
-        <div class="section__label reveal">See it in action</div>
-        <h2 class="section__title reveal">
-          Not a chatbot.<br />
-          <span class="gradient-text">A system controller.</span>
-        </h2>
-
-        <div class="demo reveal">
-          <div class="demo__window">
-            <div class="demo__bar">
-              <div class="demo__dots">
-                <span></span><span></span><span></span>
-              </div>
-              <div class="demo__bar-title">AURA Terminal</div>
-            </div>
-            <div class="demo__body" id="demoTerminal">
-              <div class="demo__line">
-                <span class="demo__prompt">&gt;</span>
-                <span class="demo__cmd" id="typeTarget"></span>
-                <span class="demo__cursor" id="typeCursor">|</span>
-              </div>
-              <div class="demo__output" id="demoOutput"></div>
-            </div>
-          </div>
-
-          <div class="demo__commands" id="demoCommands">
-            <button class="demo__tag active" data-idx="0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-              File Ops
-            </button>
-            <button class="demo__tag" data-idx="1">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              System
-            </button>
-            <button class="demo__tag" data-idx="2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-              Execute
-            </button>
-            <button class="demo__tag" data-idx="3">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-              Scaffold
-            </button>
-          </div>
+    <section id="privacy" class="section section--band">
+      <div class="wrap split">
+        <div>
+          <h2>Private because it's local</h2>
+          <p class="section__lede">Most assistants are a chat window connected to someone else's
+            server. Locus runs its speech recognition and language model on your PC, so your
+            requests never leave it.</p>
         </div>
+        <dl class="facts">
+          <div><dt>Works offline</dt><dd>Every feature works with the network unplugged.</dd></div>
+          <div><dt>No account</dt><dd>Nothing to sign up for or log in to.</dd></div>
+          <div><dt>No telemetry</dt><dd>Locus doesn't report anything back. Not usage, not crashes, nothing.</dd></div>
+          <div><dt>Online is opt-in</dt><dd>Features that need the internet, like web search, will come later and stay off until you turn them on.</dd></div>
+        </dl>
       </div>
     </section>
 
-    <!-- ===================== 3. COMPARE ===================== -->
-    <section id="compare" class="section section--alt">
-      <div class="container">
-        <div class="section__label reveal">What makes AURA different</div>
-        <h2 class="section__title reveal">
-          Others talk.<br />
-          <span class="gradient-text">AURA acts.</span>
-        </h2>
-
-        <div class="compare-grid reveal">
-          <div class="compare-card">
-            <div class="compare-card__head">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-              ChatGPT &amp; Friends
-            </div>
-            <ul class="compare-card__list compare-card__list--dim">
-              <li>Talks about actions</li>
-              <li>Requires cloud + API key</li>
-              <li>Suggests code to copy-paste</li>
-              <li>Your data on their servers</li>
-              <li>Subscription required</li>
-            </ul>
-          </div>
-
-          <div class="compare-card compare-card--highlight">
-            <div class="compare-card__head">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="url(#cmp-g)" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <circle cx="12" cy="12" r="8" opacity=".5"/>
-                <defs><linearGradient id="cmp-g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#06b6d4"/></linearGradient></defs>
-              </svg>
-              AURA
-            </div>
-            <ul class="compare-card__list">
-              <li><strong>Executes</strong> real actions</li>
-              <li><strong>Runs 100% locally</strong> &mdash; no cloud</li>
-              <li><strong>Controls</strong> your filesystem &amp; OS</li>
-              <li><strong>Your data never leaves</strong> your machine</li>
-              <li><strong>Free forever</strong> &mdash; open source</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="compare-tags reveal">
-          <span class="pill">Talk vs Act</span>
-          <span class="pill">Cloud vs Local</span>
-          <span class="pill">Suggest vs Execute</span>
-        </div>
-      </div>
+    <section id="safety" class="section wrap">
+      <h2>Careful with your files</h2>
+      <p class="section__lede">An assistant that can delete things has to be cautious. Locus
+        sorts every action by how much it could cost you.</p>
+      <ol class="ladder">
+        <li>
+          <span class="ladder__level">Looks something up</span>
+          <span class="ladder__rule">Just does it.</span>
+          <span class="ladder__eg">CPU usage, finding a file</span>
+        </li>
+        <li>
+          <span class="ladder__level">Makes a change you can undo</span>
+          <span class="ladder__rule">Does it, then tells you what changed.</span>
+          <span class="ladder__eg">Opening an app, moving a file</span>
+        </li>
+        <li>
+          <span class="ladder__level">Could lose unsaved work</span>
+          <span class="ladder__rule">Asks first, and cancels if you don't answer in 15 seconds.</span>
+          <span class="ladder__eg">Closing an app</span>
+        </li>
+        <li>
+          <span class="ladder__level">Deletes or powers off</span>
+          <span class="ladder__rule">Shows exactly what will happen and waits for you to press
+            a key or click Confirm. A spoken “yes” isn't enough.</span>
+          <span class="ladder__eg">Deleting a file, shutting down</span>
+        </li>
+      </ol>
+      <p class="footnote">Deleted files always go to the Recycle Bin, so you can get them back.
+        Apps are closed the normal way, never force-quit, so their own “Save changes?”
+        prompt still appears.</p>
     </section>
 
-    <!-- ===================== 4. HOW IT WORKS ===================== -->
-    <section id="how" class="section">
-      <div class="container">
-        <div class="section__label reveal">How it works</div>
-        <h2 class="section__title reveal">
-          Three steps.<br />
-          <span class="gradient-text">Zero friction.</span>
-        </h2>
-
-        <div class="steps reveal">
-          <div class="step">
-            <div class="step__num">01</div>
-            <div class="step__icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
-                <path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
-              </svg>
-            </div>
-            <h3>You speak or type</h3>
-            <p>Natural language. No syntax. No learning curve.</p>
-          </div>
-
-          <div class="step__connector" aria-hidden="true">
-            <svg width="40" height="2" viewBox="0 0 40 2"><line x1="0" y1="1" x2="40" y2="1" stroke="rgba(255,255,255,.15)" stroke-width="2" stroke-dasharray="4 4"/></svg>
-          </div>
-
-          <div class="step">
-            <div class="step__num">02</div>
-            <div class="step__icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 16v-4M12 8h.01"/>
-              </svg>
-            </div>
-            <h3>AURA understands</h3>
-            <p>Intent is parsed, classified, and routed to the right module.</p>
-          </div>
-
-          <div class="step__connector" aria-hidden="true">
-            <svg width="40" height="2" viewBox="0 0 40 2"><line x1="0" y1="1" x2="40" y2="1" stroke="rgba(255,255,255,.15)" stroke-width="2" stroke-dasharray="4 4"/></svg>
-          </div>
-
-          <div class="step">
-            <div class="step__num">03</div>
-            <div class="step__icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            <h3>AURA executes</h3>
-            <p>Real actions on your system. Files, apps, commands&mdash;done.</p>
-          </div>
-        </div>
+    <section id="requirements" class="section wrap">
+      <h2>Will it run on my PC?</h2>
+      <p class="section__lede">Probably. Locus is built for ordinary laptops, not gaming rigs.
+        The installer checks your hardware and picks models that fit.</p>
+      <div class="table-scroll">
+        <table class="specs">
+          <thead>
+            <tr><th scope="col"></th><th scope="col">Minimum</th><th scope="col">Recommended</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Windows</th><td>10 or 11, 64-bit</td><td>11, 64-bit</td></tr>
+            <tr><th scope="row">Memory</th><td>8 GB</td><td>16 GB</td></tr>
+            <tr><th scope="row">Graphics card</th><td>Not needed</td><td>Not needed</td></tr>
+            <tr><th scope="row">Processor</th><td>4 cores, about 2018 or newer</td><td>6–8 cores, about 2020 or newer</td></tr>
+            <tr><th scope="row">Disk space</th><td>About 5 GB</td><td>About 10 GB</td></tr>
+          </tbody>
+        </table>
       </div>
+      <p class="footnote">macOS and Linux are planned after the Windows release.</p>
     </section>
 
-    <!-- ===================== 5. CAPABILITIES ===================== -->
-    <section id="capabilities" class="section section--alt">
-      <div class="container">
-        <div class="section__label reveal">Core capabilities</div>
-        <h2 class="section__title reveal">
-          Built to <span class="gradient-text">do, not chat.</span>
-        </h2>
-
-        <div class="cap-grid">
-          <div class="cap reveal">
-            <div class="cap__icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-            </div>
-            <h3>File Intelligence</h3>
-            <p>Create, move, rename, search&mdash;across your entire filesystem.</p>
-          </div>
-
-          <div class="cap reveal">
-            <div class="cap__icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            </div>
-            <h3>Command Execution</h3>
-            <p>Run shell commands through a sandboxed, allowlisted pipeline.</p>
-          </div>
-
-          <div class="cap reveal">
-            <div class="cap__icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-            </div>
-            <h3>System Monitoring</h3>
-            <p>CPU, RAM, processes, health checks&mdash;all from natural language.</p>
-          </div>
-
-          <div class="cap reveal">
-            <div class="cap__icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-            </div>
-            <h3>Multi-Stack Scaffolding</h3>
-            <p>Spin up Python, Node, React, or FastAPI projects with one command.</p>
-          </div>
-
-          <div class="cap reveal">
-            <div class="cap__icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            </div>
-            <h3>Security Built In</h3>
-            <p>Protected paths, allowlisted commands, tamper-evident audit logs.</p>
-          </div>
-
-          <div class="cap reveal">
-            <div class="cap__icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-            </div>
-            <h3>Plugin Architecture</h3>
-            <p>Immutable core, infinite extensions. Voice, vision, memory&mdash;all plugins.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================== 6. ARCHITECTURE ===================== -->
-    <section class="section">
-      <div class="container">
-        <div class="section__label reveal">Under the hood</div>
-        <h2 class="section__title reveal">
-          Modular by <span class="gradient-text">design.</span>
-        </h2>
-
-        <div class="arch reveal">
-          <div class="arch__col">
-            <div class="arch__module">
-              <div class="arch__dot arch__dot--active"></div>
-              <span>Wake Word</span>
-            </div>
-            <div class="arch__module">
-              <div class="arch__dot arch__dot--active"></div>
-              <span>Speech-to-Text</span>
-            </div>
-            <div class="arch__module">
-              <div class="arch__dot arch__dot--active"></div>
-              <span>Intent Router</span>
-            </div>
-            <div class="arch__module">
-              <div class="arch__dot"></div>
-              <span>Local LLM</span>
-            </div>
-          </div>
-
-          <div class="arch__center">
-            <div class="arch__core">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="url(#arch-g)" stroke-width="1.5">
-                <circle cx="12" cy="12" r="3"/>
-                <circle cx="12" cy="12" r="8" opacity=".4"/>
-                <defs><linearGradient id="arch-g" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#06b6d4"/></linearGradient></defs>
-              </svg>
-              <span>AURA Core</span>
-            </div>
-          </div>
-
-          <div class="arch__col">
-            <div class="arch__module">
-              <div class="arch__dot arch__dot--active"></div>
-              <span>File Operations</span>
-            </div>
-            <div class="arch__module">
-              <div class="arch__dot arch__dot--active"></div>
-              <span>Shell Executor</span>
-            </div>
-            <div class="arch__module">
-              <div class="arch__dot"></div>
-              <span>Screen Vision</span>
-            </div>
-            <div class="arch__module">
-              <div class="arch__dot"></div>
-              <span>Text-to-Speech</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="arch__legend reveal">
-          <span><span class="arch__dot arch__dot--active arch__dot--inline"></span> Available now</span>
-          <span><span class="arch__dot arch__dot--inline"></span> Coming soon</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================== 7. PHILOSOPHY ===================== -->
-    <section class="section section--alt">
-      <div class="container">
-        <div class="philosophy reveal">
-          <div class="philosophy__item">
-            <h3>Local-first</h3>
-            <p>Your machine is the entire stack. No servers. No dependencies.</p>
-          </div>
-          <div class="philosophy__item">
-            <h3>Privacy-first</h3>
-            <p>Your voice, files, and data never leave your device. Period.</p>
-          </div>
-          <div class="philosophy__item">
-            <h3>Action &gt; Chat</h3>
-            <p>Built to execute, not to generate paragraphs you won't read.</p>
-          </div>
-          <div class="philosophy__item">
-            <h3>Utility &gt; Hype</h3>
-            <p>Every feature ships working. No roadmap theater. No vaporware.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================== 8. FINAL CTA ===================== -->
-    <section class="cta">
-      <div class="container">
-        <div class="cta__inner reveal">
-          <h2 class="cta__title">
-            Start building with <span class="gradient-text">AURA</span>
-          </h2>
-          <p class="cta__sub">
-            Clone. Install. Run <code>python -m aura</code>. That's it.
-          </p>
-          <div class="cta__actions">
-            <a
-              href="https://github.com/aryanjsx/AURA"
-              target="_blank"
-              rel="noopener"
-              class="btn btn--primary"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 .5C5.73.5.67 5.56.67 11.83c0 5.02 3.24 9.26 7.75 10.76.57.1.78-.25.78-.55v-2c-3.15.68-3.82-1.35-3.82-1.35-.52-1.3-1.27-1.65-1.27-1.65-1.04-.71.08-.7.08-.7 1.15.08 1.75 1.18 1.75 1.18 1.02 1.74 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.16-3.04-.12-.29-.5-1.44.11-3 0 0 .95-.3 3.1 1.16.9-.25 1.87-.37 2.83-.38.96.01 1.93.13 2.83.38 2.15-1.46 3.1-1.16 3.1-1.16.61 1.56.23 2.71.11 3 .72.79 1.16 1.8 1.16 3.04 0 4.35-2.66 5.31-5.19 5.59.41.35.78 1.05.78 2.12v3.14c0 .3.21.66.79.55 4.51-1.5 7.74-5.74 7.74-10.76C23.33 5.56 18.27.5 12 .5z"/>
-              </svg>
-              Get Started on GitHub
-            </a>
-            <a
-              href="https://github.com/aryanjsx/AURA"
-              target="_blank"
-              rel="noopener"
-              class="btn btn--ghost"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-              </svg>
-              Star the Repo
+    <section id="status" class="section section--band">
+      <div class="wrap split">
+        <div>
+          <h2>Where it's at</h2>
+          <p class="section__lede">Locus is being built in the open, one step at a time. A step
+            only counts as done when it works on a real PC.</p>
+          <div class="cta">
+            <a class="button button--primary" data-download
+               href="https://github.com/aryanjsx/Locus/releases">
+              <span data-download-label>Download for Windows</span>
             </a>
           </div>
+          <p class="cta__note" data-download-note>The button starts working the day the first build ships.</p>
         </div>
+        <ol class="progress">
+          <li class="is-done"><span>Planning</span> Scope, safety rules and the full list of commands</li>
+          <li class="is-now"><span>Testing models</span> Measuring which models are fast and accurate on everyday hardware</li>
+          <li><span>First working build</span> Typed commands, start to finish</li>
+          <li><span>Voice</span> Push-to-talk speech, spoken replies</li>
+          <li><span>Windows installer</span> One download, set up for your hardware</li>
+        </ol>
       </div>
     </section>
+  </main>
 
-    <!-- FOOTER -->
-    <footer class="footer">
-      <div class="footer__inner">
-        <div class="footer__left">
-          <span class="footer__brand">AURA</span>
-          <span class="footer__sep" aria-hidden="true"></span>
-          <span class="footer__tag">System-level AI. Runs locally.</span>
-        </div>
-        <div class="footer__right">
-          <span>&copy; <span id="year"></span> Aryan Kumar</span>
-          <a
-            href="https://github.com/aryanjsx/AURA"
-            target="_blank"
-            rel="noopener"
-            class="footer__gh"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 .5C5.73.5.67 5.56.67 11.83c0 5.02 3.24 9.26 7.75 10.76.57.1.78-.25.78-.55v-2c-3.15.68-3.82-1.35-3.82-1.35-.52-1.3-1.27-1.65-1.27-1.65-1.04-.71.08-.7.08-.7 1.15.08 1.75 1.18 1.75 1.18 1.02 1.74 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.16-3.04-.12-.29-.5-1.44.11-3 0 0 .95-.3 3.1 1.16.9-.25 1.87-.37 2.83-.38.96.01 1.93.13 2.83.38 2.15-1.46 3.1-1.16 3.1-1.16.61 1.56.23 2.71.11 3 .72.79 1.16 1.8 1.16 3.04 0 4.35-2.66 5.31-5.19 5.59.41.35.78 1.05.78 2.12v3.14c0 .3.21.66.79.55 4.51-1.5 7.74-5.74 7.74-10.76C23.33 5.56 18.27.5 12 .5z"/>
-            </svg>
-            GitHub
-          </a>
-        </div>
-      </div>
-    </footer>
+  <footer class="site-footer">
+    <div class="wrap site-footer__inner">
+      <p>Locus is open source under the
+        <a href="https://github.com/aryanjsx/Locus/blob/main/LICENSE">MIT licence</a>.
+        Built by <a href="https://github.com/aryanjsx">Aryan Kumar</a>.</p>
+      <p>This site uses no cookies and no analytics.</p>
+      <p><a href="https://github.com/aryanjsx/Locus">GitHub</a> ·
+        <a href="https://github.com/aryanjsx/Locus/issues">Report an issue</a></p>
+    </div>
+  </footer>
 
-    <script src="script.js"></script>
-  </body>
+  <script src="script.js" defer></script>
+</body>
 </html>
