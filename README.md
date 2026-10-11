@@ -75,7 +75,7 @@ About 20 actions in three groups. Each command does one thing. The full list, wi
 | CPU | 4 cores with AVX2 (≈2018+) | 6–8 cores (≈2020+) |
 | Free disk | ~5 GB | ~10 GB |
 
-You'll be able to install Locus two ways: with the **Windows installer (`.exe`)** from the [website](https://aryanjsx.github.io/Locus/), or **from the command line**. Both install the same build. On first run, Locus checks your hardware and **recommends the right models for your machine**. It downloads them only after you agree.
+You'll be able to install Locus two ways: with the **Windows installer (`.exe`)** from the [website](https://aryanjsx.github.io/Locus/), or from the command line with **`winget install Locus`**. Both install the same build. On first run, Locus checks your hardware and **recommends the right models for your machine**. It downloads them only after you agree.
 
 ## Tech stack
 
