@@ -10,7 +10,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
 ![License](https://img.shields.io/github/license/aryanjsx/AURA)
 
-[Why Locus](#why-locus) · [MVP scope](#mvp-scope) · [Safety](#safety) · [Requirements](#system-requirements) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Docs](#documentation)
+[Website](https://aryanjsx.github.io/Locus/) · [Why Locus](#why-locus) · [MVP scope](#mvp-scope) · [Safety](#safety) · [Requirements](#system-requirements) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Docs](#documentation)
 
 </div>
 
