@@ -120,7 +120,16 @@ Everything is measured on the **weakest machine available**, not only the develo
 
 ## 9. Distribution (post-MVP)
 
-- A **Windows `.exe` installer** once the MVP is stable.
+- **Two ways to install, one build.** Once the MVP is stable, Locus ships as:
+  - a **Windows `.exe` installer** for most people (download from the website);
+  - a **command-line install** for people who prefer the terminal: **`winget install Locus`**.
+
+  Both install exactly the same signed build. winget downloads the release `.exe` and runs it silently, so there's only one artifact to build, sign and test.
+- **winget requirements** (to have ready for the first release):
+  - Package identifier **`aryanjsx.Locus`**, package name **Locus**, moniker **`locus`**. "Locus" had no match in the winget catalogue on 2026-10-11, so `winget install Locus` resolves without asking.
+  - The installer must support a **silent install** (e.g. Inno Setup, NSIS or MSI with documented silent switches) and be published at a stable URL, i.e. as a GitHub release asset.
+  - Each release needs a manifest (version, installer URL, SHA-256) submitted as a pull request to [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs). Microsoft reviews it, usually within a few days. Automate this with a release workflow so it happens on every release.
+  - Code signing isn't required by winget but avoids SmartScreen warnings.
 - **First-run setup:** detect RAM, CPU (AVX2) and free disk, **recommend models for that tier**, and download them only after the user agrees.
 - **The installer bundles the LLM engine (`llama.cpp`).** Users don't install anything else.
 - Implications to decide early (see open decisions):
@@ -155,6 +164,8 @@ Everything is measured on the **weakest machine available**, not only the develo
 | D20 | Closing an app is "check first", not destructive: ask about unsaved work, 15 s, graceful close only | 2026-09-30 |
 | D21 | No online features in the MVP: internet-only requests get "I can't look that up yet"; web search is the first post-MVP feature | 2026-09-30 |
 | D22 | Name: **Locus** (app, assistant and repo); replaces AURA/Kommy | 2026-09-30 |
+| D23 | Install either with the `.exe` or from the command line; both deliver the same build | 2026-10-11 |
+| D24 | Command-line install = **winget** (`winget install Locus`, ID `aryanjsx.Locus`); no separate install script | 2026-10-11 |
 
 ## 11. Open decisions (settled by experiments)
 
