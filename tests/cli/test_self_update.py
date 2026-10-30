@@ -121,9 +121,7 @@ def test_editable_git_repairs_history_and_rebuilds_active_venv(monkeypatch, shal
 def test_editable_global_install_rebuilds_running_interpreter(monkeypatch):
     mock_proc = CompletedProcess([], 0, stdout="false\n", stderr="")
     monkeypatch.setattr("locus.cli.self_update_cmd.sys.prefix", "/global python")
-    monkeypatch.setattr(
-        "locus.cli.self_update_cmd.sys.base_prefix", "/global python"
-    )
+    monkeypatch.setattr("locus.cli.self_update_cmd.sys.base_prefix", "/global python")
     monkeypatch.setattr(
         "locus.cli.self_update_cmd.sys.executable", "/global python/python"
     )
@@ -163,9 +161,7 @@ def test_editable_upgrade_stops_on_failure(monkeypatch, failed_step):
             "locus.cli.self_update_cmd.detect_install",
             return_value=_mock_info("editable-git"),
         ),
-        patch(
-            "locus.cli.self_update_cmd.subprocess.run", side_effect=responses
-        ) as run,
+        patch("locus.cli.self_update_cmd.subprocess.run", side_effect=responses) as run,
     ):
         result = CliRunner().invoke(self_update, ["-y"])
     assert result.exit_code == 7

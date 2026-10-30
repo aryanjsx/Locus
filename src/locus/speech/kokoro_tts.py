@@ -157,9 +157,7 @@ class KokoroTTSBackend(TTSBackend):
                 raise RuntimeError(
                     "kokoro package not installed. Install with: pip install kokoro"
                 ) from exc
-            if lang_code in {"a", "b"} and getattr(
-                kokoro, "_locus_spacy_error", None
-            ):
+            if lang_code in {"a", "b"} and getattr(kokoro, "_locus_spacy_error", None):
                 raise RuntimeError(
                     "English Kokoro voices require a working spaCy installation: "
                     f"{kokoro._locus_spacy_error}"

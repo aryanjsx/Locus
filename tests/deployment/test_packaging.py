@@ -154,9 +154,7 @@ def test_sdist_omits_desktop_binaries_and_rebuilds_runtime_wheel(tmp_path) -> No
     (project / desktop_source).parent.mkdir(parents=True)
     (project / desktop_source).write_text("// desktop source\n")
     generated_assets = {
-        "src/locus/server/static/index.html": (
-            '<script src="assets/app.js"></script>'
-        ),
+        "src/locus/server/static/index.html": ('<script src="assets/app.js"></script>'),
         "src/locus/server/static/assets/app.js": "// generated frontend\n",
     }
     for relative, contents in generated_assets.items():

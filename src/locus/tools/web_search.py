@@ -63,8 +63,7 @@ FIRECRAWL_SCRAPE_TIMEOUT_MS = 45000
 # each one is cut to a snippet that a small local model can take five of.
 FIRECRAWL_SNIPPET_CHARS = 500
 FIRECRAWL_KEYS_URL = (
-    "https://www.firecrawl.dev/app/api-keys"
-    "?utm_source=locus&utm_medium=integration"
+    "https://www.firecrawl.dev/app/api-keys?utm_source=locus&utm_medium=integration"
 )
 
 ENGINE_ENV = "Locus_WEB_SEARCH_ENGINE"
@@ -72,9 +71,7 @@ ENGINES = ("auto", "youcom", "tavily", "duckduckgo", "serply", "firecrawl")
 
 # Identifies Locus to You.com. The keyless tier carries no API key, so the
 # User-Agent is the only attribution signal; sent to You.com hosts only.
-YOUCOM_USER_AGENT = (
-    f"locus/{__version__} youdotcom-integration/locus-locus"
-)
+YOUCOM_USER_AGENT = f"locus/{__version__} youdotcom-integration/locus-locus"
 
 _MAX_FETCH_REDIRECTS = 5
 _REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})

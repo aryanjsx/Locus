@@ -634,9 +634,7 @@ def test_config_root_error_returns_fail_without_local_store_scan(tmp_path):
     report = build_data_boundary_report(
         config,
         None,
-        root_error=(
-            "ConfigurationError: bad Locus_HOME at /Users/alice/private/locus"
-        ),
+        root_error=("ConfigurationError: bad Locus_HOME at /Users/alice/private/locus"),
     )
 
     findings = {finding.id: finding for finding in report.findings}

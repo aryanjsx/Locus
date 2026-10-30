@@ -20,9 +20,7 @@ def _clear_keys(monkeypatch) -> None:
         monkeypatch.delenv(k, raising=False)
 
 
-def test_init_accepts_from_bare_jarvis_flag(
-    tmp_locus_home: Path, monkeypatch
-) -> None:
+def test_init_accepts_from_bare_jarvis_flag(tmp_locus_home: Path, monkeypatch) -> None:
     """The --from-bare-jarvis flag exists and suppresses the launch-chat prompt."""
     _clear_keys(monkeypatch)
     runner = CliRunner()
@@ -38,9 +36,7 @@ def test_init_accepts_from_bare_jarvis_flag(
     assert "Launch chat" not in result.output
 
 
-def test_init_proposes_cloud_when_key_in_env(
-    tmp_locus_home: Path, monkeypatch
-) -> None:
+def test_init_proposes_cloud_when_key_in_env(tmp_locus_home: Path, monkeypatch) -> None:
     """When ANTHROPIC_API_KEY is set, init mentions cloud / anthropic."""
     _clear_keys(monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")

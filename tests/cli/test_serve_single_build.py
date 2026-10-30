@@ -63,9 +63,7 @@ def _repopulate_registries() -> None:
 
     if not AgentRegistry.keys():
         for mod_name in list(sys.modules):
-            if mod_name.startswith("locus.agents.") and not mod_name.endswith(
-                "_stubs"
-            ):
+            if mod_name.startswith("locus.agents.") and not mod_name.endswith("_stubs"):
                 try:
                     importlib.reload(sys.modules[mod_name])
                 except Exception:
@@ -85,9 +83,9 @@ def _repopulate_registries() -> None:
 
     if not MemoryRegistry.keys():
         for mod_name in list(sys.modules):
-            if mod_name.startswith(
-                "locus.tools.storage."
-            ) and not mod_name.endswith("_stubs"):
+            if mod_name.startswith("locus.tools.storage.") and not mod_name.endswith(
+                "_stubs"
+            ):
                 try:
                     importlib.reload(sys.modules[mod_name])
                 except Exception:

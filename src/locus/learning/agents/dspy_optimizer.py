@@ -64,9 +64,7 @@ class DSPyAgentOptimizer:
         if not HAS_DSPY:
             return {
                 "status": "error",
-                "reason": (
-                    "dspy not installed (pip install 'locus[learning-dspy]')"
-                ),
+                "reason": ("dspy not installed (pip install 'locus[learning-dspy]')"),
             }
 
         try:

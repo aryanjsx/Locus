@@ -93,8 +93,7 @@ def _ensure_identity_prompt(messages: list[Message], app_config) -> list[Message
         _is_caller_system_prompt(message) for message in system_messages
     )
     identity_already_applied = any(
-        message.metadata.get("locus_identity_prompt")
-        for message in system_messages
+        message.metadata.get("locus_identity_prompt") for message in system_messages
     )
 
     prompt = ""

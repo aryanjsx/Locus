@@ -14,9 +14,7 @@ import pytest
 
 from locus.core.config import JarvisConfig, load_config
 
-PRESETS_DIR = (
-    Path(__file__).resolve().parents[2] / "configs" / "locus" / "examples"
-)
+PRESETS_DIR = Path(__file__).resolve().parents[2] / "configs" / "locus" / "examples"
 
 
 def _preset_paths() -> list[Path]:

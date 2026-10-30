@@ -182,9 +182,7 @@ class GEPAAgentOptimizer:
         if not HAS_GEPA:
             return {
                 "status": "error",
-                "reason": (
-                    "gepa not installed (pip install 'locus[learning-gepa]')"
-                ),
+                "reason": ("gepa not installed (pip install 'locus[learning-gepa]')"),
             }
 
         agent_name = self.config.agent_filter or "default"

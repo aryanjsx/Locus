@@ -963,10 +963,7 @@ class TestYouComSearch:
 
         WebSearchTool(engine="youcom").execute(query="test query")
 
-        assert (
-            "youdotcom-integration/locus-locus"
-            in (calls["headers"]["User-Agent"])
-        )
+        assert "youdotcom-integration/locus-locus" in (calls["headers"]["User-Agent"])
 
     def test_result_format_matches_tavily(self, monkeypatch):
         """Same labeled Source/Summary shape agents already parse (#390)."""

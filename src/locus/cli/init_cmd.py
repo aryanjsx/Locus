@@ -346,10 +346,7 @@ def init(
         # Also check installed package location
         if not examples_dir.exists():
             examples_dir = (
-                Path(__file__).resolve().parents[3]
-                / "configs"
-                / "locus"
-                / "examples"
+                Path(__file__).resolve().parents[3] / "configs" / "locus" / "examples"
             )
         preset_path = examples_dir / f"{preset}.toml"
         if not preset_path.exists():

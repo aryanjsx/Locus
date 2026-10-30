@@ -62,9 +62,7 @@ class TestGetConfigDir:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg_loses"))
         assert paths.get_config_dir() == oj.resolve()
 
-    def test_expands_user_in_locus_home(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_expands_user_in_locus_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _clear_env(monkeypatch)
         monkeypatch.setenv("Locus_HOME", "~/relocated-oj")
         assert paths.get_config_dir() == (Path.home() / "relocated-oj").resolve()

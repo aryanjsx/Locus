@@ -51,9 +51,7 @@ def test_get_status_rust_failed(tmp_locus_home: Path) -> None:
 
 
 def test_get_status_model_downloading(tmp_locus_home: Path) -> None:
-    (tmp_locus_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text(
-        ""
-    )
+    (tmp_locus_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text("")
     s = _bg_state.get_status()
     assert s.models == {"qwen3.5:9b": "downloading"}
 
@@ -65,9 +63,7 @@ def test_get_status_model_ready(tmp_locus_home: Path) -> None:
 
 
 def test_get_status_model_failed(tmp_locus_home: Path) -> None:
-    (tmp_locus_home / ".state" / "models" / "qwen3.5:9b.failed").write_text(
-        "net error"
-    )
+    (tmp_locus_home / ".state" / "models" / "qwen3.5:9b.failed").write_text("net error")
     s = _bg_state.get_status()
     assert s.models == {"qwen3.5:9b": "failed"}
 
@@ -90,9 +86,7 @@ def test_all_ready_true_when_all_ready(tmp_locus_home: Path) -> None:
 
 def test_all_ready_false_when_anything_pending(tmp_locus_home: Path) -> None:
     (tmp_locus_home / ".state" / "extension-built").write_text("")
-    (tmp_locus_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text(
-        ""
-    )
+    (tmp_locus_home / ".state" / "models" / "qwen3.5:9b.downloading").write_text("")
     s = _bg_state.get_status()
     assert s.all_ready() is False
 

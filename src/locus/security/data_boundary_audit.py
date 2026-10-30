@@ -431,8 +431,7 @@ def build_data_boundary_report(
             title="Locus home directory could not be resolved",
             potential_data_path="runtime state root -> local store checks",
             evidence=(
-                f"{error_type} while resolving Locus home; "
-                "path details were redacted"
+                f"{error_type} while resolving Locus home; path details were redacted"
             ),
             recommendation=(
                 "Fix Locus_HOME or XDG_DATA_HOME before relying on "

@@ -131,9 +131,7 @@ class TestPidLiveness:
             pid_file = tmp_path / "server.pid"
             with (
                 patch("locus.cli.daemon_cmd._PID_FILE", pid_file),
-                patch(
-                    "locus.cli.daemon_cmd._STATE_FILE", tmp_path / "server.json"
-                ),
+                patch("locus.cli.daemon_cmd._STATE_FILE", tmp_path / "server.json"),
             ):
                 _write_pid(proc.pid)
                 assert _read_pid() == proc.pid
@@ -239,9 +237,7 @@ class TestDaemonDetachment:
             assert write_pid.call_args.kwargs["ready"] is False
             token = write_pid.call_args.kwargs["launch_token"]
             assert token
-            assert (
-                popen.call_args.kwargs["env"]["Locus_DAEMON_LAUNCH_TOKEN"] == token
-            )
+            assert popen.call_args.kwargs["env"]["Locus_DAEMON_LAUNCH_TOKEN"] == token
 
     def test_second_start_rechecks_under_lock(self, tmp_path: Path) -> None:
         """A second start must not spawn after another caller registered."""

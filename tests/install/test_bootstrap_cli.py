@@ -15,9 +15,7 @@ from click.testing import CliRunner
 from locus.cli import cli
 
 
-def test_bootstrap_command_writes_config(
-    tmp_locus_home: Path, monkeypatch
-) -> None:
+def test_bootstrap_command_writes_config(tmp_locus_home: Path, monkeypatch) -> None:
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

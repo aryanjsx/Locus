@@ -37,7 +37,9 @@ jobs:
 
       - run: npm ci
       - name: Audit dependencies
-        run: npm audit
+        # Fail on moderate+ issues; the remaining low-severity deepmerge
+        # advisory has no patched upstream release.
+        run: npm audit --audit-level=moderate
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run build

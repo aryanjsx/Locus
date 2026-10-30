@@ -343,9 +343,7 @@ async def test_concurrent_unavailable_probes_share_attempt_then_retry(mock_tts_b
         time.sleep(0.05)
         return None if attempts == 1 else mock_tts_backend
 
-    with patch(
-        "locus.speech._tts_discovery.get_tts_backend", side_effect=discover
-    ):
+    with patch("locus.speech._tts_discovery.get_tts_backend", side_effect=discover):
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://testserver"
         ) as client:

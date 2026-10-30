@@ -66,9 +66,7 @@ def test_cancelled_prompt_never_consents(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("flag", [None, "--analytics", "--no-analytics"])
-def test_init_persists_flag_or_default(
-    tmp_locus_home: Path, flag: str | None
-) -> None:
+def test_init_persists_flag_or_default(tmp_locus_home: Path, flag: str | None) -> None:
     args = ["--engine", "ollama", "--no-download", "--no-scan"]
     if flag:
         args.append(flag)

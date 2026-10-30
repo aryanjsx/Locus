@@ -396,9 +396,7 @@ def host(
 
     if backend != "ollama":
         console.print(f"[dim]The model server will be available at {host_url}[/dim]")
-        console.print(
-            "[dim]Locus will auto-discover it. Press Ctrl+C to stop.[/dim]\n"
-        )
+        console.print("[dim]Locus will auto-discover it. Press Ctrl+C to stop.[/dim]\n")
 
     try:
         proc = subprocess.Popen(cmd)

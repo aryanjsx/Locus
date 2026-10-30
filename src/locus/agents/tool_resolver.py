@@ -197,9 +197,9 @@ def ensure_registries_populated() -> None:
 
     if not ChannelRegistry.keys():
         for module_name in list(sys.modules):
-            if module_name.startswith(
-                "locus.channels."
-            ) and not module_name.endswith("_stubs"):
+            if module_name.startswith("locus.channels.") and not module_name.endswith(
+                "_stubs"
+            ):
                 try:
                     importlib.reload(sys.modules[module_name])
                 except Exception:

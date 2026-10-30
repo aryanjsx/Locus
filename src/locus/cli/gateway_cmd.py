@@ -30,9 +30,7 @@ def start(install: bool) -> None:
         )
 
         if plat.system() == "Darwin":
-            plist_path = (
-                Path.home() / "Library/LaunchAgents/com.locus.gateway.plist"
-            )
+            plist_path = Path.home() / "Library/LaunchAgents/com.locus.gateway.plist"
             generate_launchd_plist(plist_path)
             click.echo(f"Wrote {plist_path}")
             subprocess.run(
@@ -40,9 +38,7 @@ def start(install: bool) -> None:
                 check=False,
             )
         else:
-            service_path = (
-                Path.home() / ".config/systemd/user/locus-gateway.service"
-            )
+            service_path = Path.home() / ".config/systemd/user/locus-gateway.service"
             generate_systemd_service(service_path)
             click.echo(f"Wrote {service_path}")
             subprocess.run(
