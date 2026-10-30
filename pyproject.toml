@@ -197,7 +197,7 @@ mining-pearl-cpu = [
     # `uv sync --extra mining-pearl-cpu` to opt-in (it succeeds with no
     # additional resolution today; the actual install happens on demand).
 ]
-framework-comparison = ["polars>=1.0"]
+framework-comparison = ["polars>=2.0.0"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
