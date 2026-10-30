@@ -1,0 +1,33 @@
+# NVIDIA GPU override — use with:
+#   docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.gpu.nvidia.yml up
+
+services:
+  jarvis:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.gpu
+    volumes:
+      - /proc:/proc:ro
+      - /sys:/sys:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama:
+    # Pinned to a fixed version + digest for reproducible deployments (#563);
+    # must match the tag in docker-compose.yml.
+    image: ollama/ollama:0.30.10@sha256:bfc9c6d53cc6989aa5131a6fde6b162b2802d4d337657f3253b5f69579bddeee
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

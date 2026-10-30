@@ -1,0 +1,350 @@
+"""Tests for model resolution fallback chain in jarvis ask."""
+
+from __future__ import annotations
+
+import importlib
+from unittest import mock
+
+import pytest
+from click.testing import CliRunner
+
+from locus.cli import cli
+from locus.core.config import JarvisConfig
+
+_ask_mod = importlib.import_module("locus.cli.ask")
+
+
+def _mock_engine():
+    """Create a mock engine that returns a simple response."""
+    engine = mock.MagicMock()
+    engine.engine_id = "mock"
+    engine.health.return_value = True
+    engine.list_models.return_value = ["test-model"]
+    engine.generate.return_value = {
+        "content": "Hello!",
+        "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
+        "model": "test-model",
+        "finish_reason": "stop",
+    }
+    return engine
+
+
+def _register_agents():
+    """Re-register agents after the conftest registry clear.
+
+    The default ``JarvisConfig().agent.default_agent`` is ``"simple"``,
+    so ``jarvis ask "..."`` (without ``--agent``) routes through SimpleAgent.
+    Without this re-registration, that path raises ``Unknown agent: simple``.
+    """
+    from locus.agents.simple import SimpleAgent
+    from locus.core.registry import AgentRegistry
+
+    if not AgentRegistry.contains("simple"):
+        AgentRegistry.register_value("simple", SimpleAgent)
+
+
+def _patch_engine(engine):
+    """Return context managers that patch engine discovery to use our mock."""
+    _register_agents()
+    return (
+        mock.patch.object(
+            _ask_mod,
+            "get_engine",
+            return_value=("mock", engine),
+        ),
+        mock.patch.object(
+            _ask_mod,
+            "discover_engines",
+            return_value={"mock": engine},
+        ),
+        mock.patch.object(
+            _ask_mod,
+            "discover_models",
+            return_value={"mock": ["test-model"]},
+        ),
+        mock.patch.object(_ask_mod, "register_builtin_models"),
+        mock.patch.object(_ask_mod, "merge_discovered_models"),
+        mock.patch.object(_ask_mod, "TelemetryStore"),
+    )
+
+
+class TestAskModelResolution:
+    def test_default_model_from_config(self) -> None:
+        """When no -m flag, uses config.intelligence.default_model."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = CliRunner().invoke(cli, ["ask", "Hello"])
+        assert result.exit_code == 0
+        assert "Hello!" in result.output
+
+    def test_explicit_model_flag(self) -> None:
+        """The -m flag directly selects a model, bypassing fallback chain."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            result = CliRunner().invoke(
+                cli,
+                ["ask", "-m", "test-model", "Hello"],
+            )
+        assert result.exit_code == 0
+        assert "Hello!" in result.output
+
+    def test_fallback_to_engine_models(self) -> None:
+        """When default_model is empty, falls back to first engine model."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.intelligence.default_model = ""
+            cfg.intelligence.fallback_model = ""
+            cfg.intelligence.temperature = 0.7
+            cfg.intelligence.max_tokens = 1024
+            cfg.agent.context_from_memory = False
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(cli, ["ask", "Hello"])
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == "test-model"
+
+    def test_fallback_to_fallback_model(self) -> None:
+        """When default_model is empty and no engine models, uses fallback_model."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        # Override discover_models to return empty list
+        with (
+            patches[0],
+            patches[1],
+            mock.patch.object(
+                _ask_mod,
+                "discover_models",
+                return_value={"mock": []},
+            ),
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.intelligence.default_model = ""
+            cfg.intelligence.fallback_model = "fallback-model"
+            cfg.intelligence.temperature = 0.7
+            cfg.intelligence.max_tokens = 1024
+            cfg.agent.context_from_memory = False
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(cli, ["ask", "Hello"])
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == "fallback-model"
+
+    def test_router_selects_code_model_for_code_query(self) -> None:
+        """When routing is enabled, a code query routes to coder model."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        models = ["llama3.2:3b", "qwen2.5-coder:7b"]
+        with (
+            patches[0],
+            patches[1],
+            mock.patch.object(
+                _ask_mod,
+                "discover_models",
+                return_value={"mock": models},
+            ),
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.learning.enabled = True
+            cfg.learning.routing.policy = "heuristic"
+            cfg.intelligence.default_model = "llama3.2:3b"
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(
+                cli,
+                ["ask", "Write a Python function to parse JSON: def parse(): pass"],
+            )
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen2.5-coder:7b"
+
+    @pytest.mark.parametrize("unavailable_setting", ["default", "fallback"])
+    def test_router_excludes_models_missing_from_active_engine(
+        self, unavailable_setting: str
+    ) -> None:
+        """Routing must not choose a configured model absent from this engine."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        available_model = "llama3.2:3b"
+        unavailable_model = "qwen2.5-coder:7b"
+        with (
+            patches[0],
+            patches[1],
+            mock.patch.object(
+                _ask_mod,
+                "discover_models",
+                return_value={"mock": [available_model]},
+            ),
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.learning.enabled = True
+            cfg.learning.routing.policy = "heuristic"
+            cfg.intelligence.default_model = (
+                unavailable_model
+                if unavailable_setting == "default"
+                else available_model
+            )
+            cfg.intelligence.fallback_model = (
+                unavailable_model
+                if unavailable_setting == "fallback"
+                else available_model
+            )
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(
+                cli,
+                ["ask", "Write a Python function to parse JSON: def parse(): pass"],
+            )
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == available_model
+
+    def test_router_selects_small_model_for_simple_query(self) -> None:
+        """When routing is enabled, a low complexity query routes to smallest model."""
+        from locus.intelligence.model_catalog import register_builtin_models
+
+        register_builtin_models()
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        models = ["llama3.2:3b", "qwen2.5-coder:7b"]
+        with (
+            patches[0],
+            patches[1],
+            mock.patch.object(
+                _ask_mod,
+                "discover_models",
+                return_value={"mock": models},
+            ),
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.learning.enabled = True
+            cfg.learning.routing.policy = "heuristic"
+            cfg.intelligence.default_model = "qwen2.5-coder:7b"
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(cli, ["ask", "hi"])
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == "llama3.2:3b"
+
+    def test_cli_route_flag_overrides_config(self) -> None:
+        """The --route flag enables router even when learning is disabled in config."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        models = ["llama3.2:3b", "qwen2.5-coder:7b"]
+        with (
+            patches[0],
+            patches[1],
+            mock.patch.object(
+                _ask_mod,
+                "discover_models",
+                return_value={"mock": models},
+            ),
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.learning.enabled = False
+            cfg.intelligence.default_model = "llama3.2:3b"
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "ask",
+                    "--route",
+                    "heuristic",
+                    "Write a Python function to parse JSON: def parse(): pass",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == "qwen2.5-coder:7b"
+
+    def test_explicit_model_flag_bypasses_router(self) -> None:
+        """The -m flag overrides router policy completely."""
+        engine = _mock_engine()
+        patches = _patch_engine(engine)
+        models = ["llama3.2:3b", "qwen2.5-coder:7b"]
+        with (
+            patches[0],
+            patches[1],
+            mock.patch.object(
+                _ask_mod,
+                "discover_models",
+                return_value={"mock": models},
+            ),
+            patches[3],
+            patches[4],
+            patches[5],
+            mock.patch.object(
+                _ask_mod,
+                "load_config",
+                return_value=JarvisConfig(),
+            ) as mock_config,
+        ):
+            cfg = mock_config.return_value
+            cfg.telemetry.enabled = False
+            cfg.learning.enabled = True
+            cfg.learning.routing.policy = "heuristic"
+            cfg.agent.default_agent = ""
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "ask",
+                    "-m",
+                    "forced-model",
+                    "Write a Python function: def parse(): pass",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        assert engine.generate.call_args.kwargs["model"] == "forced-model"

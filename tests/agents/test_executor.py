@@ -1,0 +1,240 @@
+"""Tests for AgentExecutor single-tick execution."""
+
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from locus.agents._stubs import AgentResult
+from locus.agents.errors import FatalError, RetryableError
+from locus.core.events import EventBus, EventType
+from locus.core.types import ToolResult
+
+
+@pytest.fixture
+def manager():
+    from locus.agents.manager import AgentManager
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mgr = AgentManager(db_path=str(Path(tmpdir) / "agents.db"))
+        yield mgr
+        mgr.close()
+
+
+@pytest.fixture
+def event_bus():
+    return EventBus()
+
+
+@pytest.fixture
+def executor(manager, event_bus):
+    from locus.agents.executor import AgentExecutor
+
+    mock_system = MagicMock()
+    ex = AgentExecutor(manager=manager, event_bus=event_bus)
+    ex.set_system(mock_system)
+    return ex
+
+
+class TestExecutorBasic:
+    def test_execute_tick_publishes_start_end_events(
+        self, executor, manager, event_bus
+    ):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+        events = []
+        event_bus.subscribe(EventType.AGENT_TICK_START, lambda e: events.append(e))
+        event_bus.subscribe(EventType.AGENT_TICK_END, lambda e: events.append(e))
+
+        rv = AgentResult(content="result text")
+        with patch.object(executor, "_invoke_agent", return_value=rv):
+            executor.execute_tick(agent["id"])
+
+        assert len(events) == 2
+        assert events[0].event_type == EventType.AGENT_TICK_START
+        assert events[1].event_type == EventType.AGENT_TICK_END
+
+    def test_execute_tick_updates_run_stats(self, executor, manager):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+
+        rv = AgentResult(content="result text")
+        with patch.object(executor, "_invoke_agent", return_value=rv):
+            executor.execute_tick(agent["id"])
+
+        updated = manager.get_agent(agent["id"])
+        assert updated["total_runs"] == 1
+        assert updated["status"] == "idle"
+
+    def test_execute_tick_sets_running_then_idle(self, executor, manager):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+        statuses = []
+
+        original_start = manager.start_tick
+
+        def track_start(aid):
+            original_start(aid)
+            statuses.append(manager.get_agent(aid)["status"])
+
+        manager.start_tick = track_start
+
+        rv = AgentResult(content="result")
+        with patch.object(executor, "_invoke_agent", return_value=rv):
+            executor.execute_tick(agent["id"])
+
+        assert statuses == ["running"]
+        assert manager.get_agent(agent["id"])["status"] == "idle"
+
+    def test_execute_tick_handles_fatal_error(self, executor, manager, event_bus):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+        errors = []
+        event_bus.subscribe(EventType.AGENT_TICK_ERROR, lambda e: errors.append(e))
+
+        with patch.object(
+            executor, "_invoke_agent", side_effect=FatalError("bad config")
+        ):
+            executor.execute_tick(agent["id"])
+
+        assert manager.get_agent(agent["id"])["status"] == "error"
+        assert len(errors) == 1
+
+    def test_execute_tick_retries_retryable_error(self, executor, manager):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+        call_count = 0
+
+        def flaky_invoke(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RetryableError("rate limit")
+            return AgentResult(content="success")
+
+        with patch.object(executor, "_invoke_agent", side_effect=flaky_invoke):
+            with patch("locus.agents.executor.retry_delay", return_value=0):
+                executor.execute_tick(agent["id"])
+
+        assert call_count == 3
+        assert manager.get_agent(agent["id"])["status"] == "idle"
+
+    def test_execute_tick_gives_up_after_max_retries(self, executor, manager):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+
+        with patch.object(
+            executor, "_invoke_agent", side_effect=RetryableError("always fails")
+        ):
+            with patch("locus.agents.executor.retry_delay", return_value=0):
+                executor.execute_tick(agent["id"])
+
+        assert manager.get_agent(agent["id"])["status"] == "error"
+
+    def test_execute_tick_concurrency_guard(self, executor, manager):
+        agent = manager.create_agent(name="test", agent_type="monitor_operative")
+        manager.start_tick(agent["id"])  # Simulate already running
+
+        # Second tick should handle the ValueError from start_tick
+        rv = AgentResult(content="result")
+        with patch.object(executor, "_invoke_agent", return_value=rv):
+            executor.execute_tick(agent["id"])
+
+        # Agent should still be running (first tick owns it)
+        assert manager.get_agent(agent["id"])["status"] == "running"
+
+
+def test_empty_turn_with_tool_result_is_not_retried() -> None:
+    from locus.agents.executor import _should_retry_empty_result
+
+    result = AgentResult(
+        content="  ",
+        tool_results=[ToolResult(tool_name="channel_send", content="sent")],
+    )
+
+    assert _should_retry_empty_result(result) is False
+    assert _should_retry_empty_result(AgentResult(content="")) is True
+
+
+def test_finalize_tick_reads_agent_result_metadata(tmp_path):
+    """_finalize_tick() accumulates cost/tokens from AgentResult.metadata."""
+    from locus.agents.executor import AgentExecutor
+    from locus.agents.manager import AgentManager
+
+    mgr = AgentManager(str(tmp_path / "test.db"))
+    bus = EventBus()
+    executor = AgentExecutor(mgr, bus)
+
+    agent = mgr.create_agent("budget-agent")
+    mgr.start_tick(agent["id"])
+
+    result = AgentResult(
+        content="done",
+        metadata={"tokens_used": 500, "cost": 0.05},
+    )
+    executor._finalize_tick(agent["id"], result, error=None, duration=1.0)
+
+    updated = mgr.get_agent(agent["id"])
+    assert updated["total_tokens"] == 500
+    assert updated["total_cost"] == 0.05
+    assert updated["stall_retries"] == 0
+    mgr.close()
+
+
+def test_tick_model_prefers_system_default_before_legacy_fallback() -> None:
+    from locus.agents.executor import _resolve_tick_model
+
+    system = MagicMock(model="qwen3:8b")
+
+    assert _resolve_tick_model({}, system) == "qwen3:8b"
+    assert _resolve_tick_model({"model": "agent-model"}, system) == "agent-model"
+
+
+def test_managed_router_receives_every_actual_engine_model() -> None:
+    from locus.agents.executor import _available_tick_models
+    from locus.learning.routing.router import (
+        HeuristicRouter,
+        build_routing_context,
+    )
+
+    engine = MagicMock()
+    engine.list_models.return_value = [
+        "qwen3:8b",
+        "tiny:1b",
+        "code-coder:32b",
+        "qwen3:8b",
+        "",
+    ]
+
+    available = _available_tick_models(engine, "qwen3:8b")
+    selected = HeuristicRouter(available_models=available).select_model(
+        build_routing_context("Write a Python function with tests")
+    )
+
+    assert available == ["qwen3:8b", "tiny:1b", "code-coder:32b"]
+    assert selected == "code-coder:32b"
+    engine.list_models.assert_called_once_with()
+
+
+def test_managed_router_excludes_unavailable_fallback_model() -> None:
+    from locus.agents.executor import _available_tick_models
+
+    engine = MagicMock()
+    engine.list_models.return_value = ["tiny:1b", "large:32b"]
+
+    assert _available_tick_models(engine, "missing:legacy") == [
+        "tiny:1b",
+        "large:32b",
+    ]
+
+
+def test_managed_router_retains_resolved_model_when_discovery_fails() -> None:
+    from locus.agents.executor import _available_tick_models
+
+    engine = MagicMock()
+    engine.list_models.side_effect = RuntimeError("offline")
+
+    assert _available_tick_models(engine, "remote:model") == ["remote:model"]
+
+
+def test_new_agent_without_model_keeps_system_default_unpinned(manager) -> None:
+    agent = manager.create_agent("inherits-system-model", config={})
+
+    assert "model" not in agent["config"]

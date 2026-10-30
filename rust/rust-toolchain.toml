@@ -1,0 +1,5 @@
+# Pin the minimum toolchain supported by the workspace dependencies.
+# uuid 1.27 requires Rust 1.89.
+[toolchain]
+channel = "1.89"
+components = ["rustfmt", "clippy"]

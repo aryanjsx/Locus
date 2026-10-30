@@ -1,0 +1,100 @@
+name: security-sast
+
+# Static application-security testing for Python code and locked dependencies.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: Bandit (high severity and confidence)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "bandit==1.9.4"
+      # Existing intentional shell execution is annotated at the call sites.
+      # -lll -iii gates only HIGH severity and HIGH confidence findings.
+      - name: Reject high/high findings
+        run: bandit -r src/locus -lll -iii -f screen
+
+  pip-audit:
+    name: pip-audit (${{ matrix.profile }}, Linux/Python 3.12)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [core, server, desktop, voice, inference-cloud, inference-litellm]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.12.19"
+      - run: python -m pip install "pip-audit==2.10.1"
+      # uv.lock contains all optional dependencies. Export each supported
+      # installed profile with hashes so pip-audit checks its exact versions.
+      - name: Export locked dependencies
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          if [ "$PROFILE" = core ]; then
+            uv export --locked --no-dev --no-emit-project --no-header > requirements.txt
+          else
+            uv export --locked --no-dev --no-emit-project --no-header --extra "$PROFILE" > requirements.txt
+          fi
+          test -s requirements.txt
+      # Existing advisories remain report-only. A failed export or incomplete
+      # audit still fails the job, and the JSON report is retained for review.
+      - name: Audit pinned dependencies
+        run: |
+          set +e
+          pip-audit -r requirements.txt --disable-pip --require-hashes --strict \
+            --progress-spinner off --format json --output pip-audit.json
+          audit_exit=$?
+          set -e
+          if [ ! -s pip-audit.json ]; then
+            echo "pip-audit did not produce a report (exit $audit_exit)" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+
+          with open("pip-audit.json", encoding="utf-8") as report_file:
+              report = json.load(report_file)
+          dependencies = report["dependencies"]
+          if not dependencies:
+              raise SystemExit("pip-audit reported no dependencies")
+          vulnerable = sum(bool(dependency["vulns"]) for dependency in dependencies)
+          print(f"Audited {len(dependencies)} packages; {vulnerable} have known advisories")
+          PY
+          if [ "$audit_exit" -ne 0 ] && [ "$audit_exit" -ne 1 ]; then
+            exit "$audit_exit"
+          fi
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pip-audit-${{ matrix.profile }}
+          path: pip-audit.json
+          if-no-files-found: ignore
+
+  semgrep:
+    name: Semgrep (rules)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run Semgrep (audit ruleset)
+        continue-on-error: true
+        run: semgrep --config=p/python --config=p/security-audit --error --skip-unknown-extensions src/locus

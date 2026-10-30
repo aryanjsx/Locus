@@ -1,0 +1,328 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ── Locus Quickstart ─────────────────────────────────────────────
+# One-command setup: installs deps, starts Ollama + model, launches
+# the backend API server and frontend, then opens the browser.
+#
+# Usage:
+#   git clone https://github.com/locus/Locus.git
+#   cd Locus
+#   ./scripts/quickstart.sh
+# ──────────────────────────────────────────────────────────────────────
+
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+info()  { echo -e "${BLUE}[info]${NC}  $*"; }
+ok()    { echo -e "${GREEN}[ok]${NC}    $*"; }
+warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
+fail()  { echo -e "${RED}[fail]${NC}  $*"; exit 1; }
+
+CLEANUP_PIDS=()
+cleanup() {
+  echo ""
+  info "Shutting down..."
+  # The "${arr[@]+...}" guard is needed: bash 3.2 (macOS system bash) expands
+  # an empty array to an unbound-variable error under `set -u`.
+  for pid in ${CLEANUP_PIDS[@]+"${CLEANUP_PIDS[@]}"}; do
+    kill "$pid" 2>/dev/null || true
+  done
+  wait 2>/dev/null || true
+  ok "Done."
+}
+trap cleanup EXIT INT TERM
+
+# ── Navigate to repo root ────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo -e "${BOLD}"
+echo "  ┌──────────────────────────────────┐"
+echo "  │       Locus Quickstart      │"
+echo "  └──────────────────────────────────┘"
+echo -e "${NC}"
+
+# ── 1. Check Python ──────────────────────────────────────────────────
+# Prefer python3, fall back to python (Windows / minimal distros that ship
+# only the unversioned name).
+info "Checking Python..."
+if command -v python3 &>/dev/null; then
+  PY_CMD="python3"
+elif command -v python &>/dev/null; then
+  PY_CMD="python"
+else
+  fail "Python 3 not found. Install from https://python.org"
+fi
+PY_VERSION=$("$PY_CMD" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+if [ "$PY_MAJOR" -ge 3 ] && [ "$PY_MINOR" -ge 10 ]; then
+  ok "Python $PY_VERSION ($PY_CMD)"
+else
+  fail "Python 3.10+ required (found $PY_VERSION)"
+fi
+
+version_at_least() {
+  "$PY_CMD" - "$1" "$2" <<'PY'
+import re
+import sys
+
+def version(text):
+    match = re.fullmatch(r"v?(\d+)\.(\d+)(?:\.(\d+))?", text)
+    return tuple(int(part or 0) for part in match.groups()) if match else None
+
+actual, minimum = map(version, sys.argv[1:])
+sys.exit(0 if actual is not None and minimum is not None and actual >= minimum else 1)
+PY
+}
+
+# Read the frontend's pins so this preflight stays aligned with engine-strict.
+FRONTEND_VERSIONS=$("$PY_CMD" - "$REPO_ROOT/frontend/package.json" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1]) as handle:
+    package = json.load(handle)
+node = re.fullmatch(r">=(\d+\.\d+(?:\.\d+)?)", package["engines"]["node"])
+npm = re.fullmatch(r"npm@(\d+\.\d+\.\d+)", package["packageManager"])
+if node is None or npm is None:
+    sys.exit("Unsupported frontend engine pins; update the quickstart preflight.")
+print(node.group(1), npm.group(1))
+PY
+)
+read -r NODE_MIN_VERSION NPM_TARGET_VERSION <<< "$FRONTEND_VERSIONS"
+
+RUST_TOOLCHAIN=$("$PY_CMD" - "$REPO_ROOT/rust/rust-toolchain.toml" <<'PY'
+import re
+import sys
+
+with open(sys.argv[1]) as handle:
+    match = re.search(r'^channel\s*=\s*"(\d+\.\d+(?:\.\d+)?)"', handle.read(), re.M)
+if match is None:
+    sys.exit("The quickstart requires a versioned Rust toolchain pin.")
+print(match.group(1))
+PY
+)
+
+rust_toolchain_ready() {
+  command -v rustc &>/dev/null && command -v cargo &>/dev/null || return 1
+  RUST_VERSION=$(cd "$REPO_ROOT/rust" && rustc --version 2>/dev/null) || return 1
+  (cd "$REPO_ROOT/rust" && cargo --version) &>/dev/null || return 1
+  version_at_least "$(echo "$RUST_VERSION" | cut -d' ' -f2)" "$RUST_TOOLCHAIN"
+}
+
+node_toolchain_supported() {
+  "$PY_CMD" - "$1" "$REPO_ROOT/frontend/package-lock.json" <<'PY'
+import json
+import re
+import sys
+
+actual = tuple(map(int, sys.argv[1].lstrip("v").split(".")))
+with open(sys.argv[2]) as handle:
+    lock = json.load(handle)
+requirement = lock.get("packages", {}).get("node_modules/vitest", {}).get("engines", {}).get("node")
+if not requirement:
+    sys.exit(0)
+# The locked test runner excludes some non-LTS Node releases even when they
+# satisfy package.json's minimum. Honor its caret / minimum alternatives.
+for alternative in requirement.split("||"):
+    match = re.fullmatch(r"\s*(\^|>=)(\d+)\.(\d+)\.(\d+)\s*", alternative)
+    if match is None:
+        sys.exit(f"Unsupported locked Node.js requirement: {requirement}")
+    operator, *parts = match.groups()
+    minimum = tuple(map(int, parts))
+    if actual >= minimum and (operator == ">=" or actual[0] == minimum[0]):
+        sys.exit(0)
+sys.exit(f"The locked frontend toolchain requires Node.js {requirement}.")
+PY
+}
+
+# ── 2. Check / install uv ───────────────────────────────────────────
+info "Checking uv..."
+if command -v uv &>/dev/null; then
+  ok "uv $(uv --version 2>/dev/null | head -1)"
+else
+  warn "uv not found — installing..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  ok "uv installed"
+fi
+
+# ── 2b. Check / install Rust ────────────────────────────────────────
+# The Rust extension (step 7b) is mandatory: memory/storage backends fail
+# without the compiled locus_rust module.
+info "Checking Rust toolchain..."
+if rust_toolchain_ready; then
+  ok "$RUST_VERSION"
+else
+  warn "Rust $RUST_TOOLCHAIN or newer was not found — installing the pinned toolchain..."
+  if command -v rustup &>/dev/null; then
+    rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+  else
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
+  fi
+  export PATH="$HOME/.cargo/bin:$PATH"
+  rust_toolchain_ready \
+    || fail "Rust installation did not provide working rustc/cargo $RUST_TOOLCHAIN commands."
+  ok "$RUST_VERSION"
+fi
+
+# ── 3. Check Node.js ────────────────────────────────────────────────
+info "Checking Node.js..."
+if command -v node &>/dev/null; then
+  NODE_VERSION=$(node --version)
+  if version_at_least "$NODE_VERSION" "$NODE_MIN_VERSION" \
+      && node_toolchain_supported "$NODE_VERSION"; then
+    ok "Node.js $NODE_VERSION"
+  else
+    fail "Node.js $NODE_MIN_VERSION or newer and a frontend-compatible release are required (found $NODE_VERSION). Install a compatible LTS release from https://nodejs.org"
+  fi
+else
+  fail "Node.js not found. Install from https://nodejs.org"
+fi
+
+# The frontend pins npm in its engines field with engine-strict, so bundled
+# npm versions below the pin hard-fail `npm install` (node 24.x bundles 11.12).
+info "Checking npm..."
+NPM_VERSION=$(npm --version 2>/dev/null || echo 0)
+if [ "${NPM_VERSION%%.*}" = "${NPM_TARGET_VERSION%%.*}" ] \
+    && version_at_least "$NPM_VERSION" "$NPM_TARGET_VERSION"; then
+  ok "npm $NPM_VERSION"
+else
+  warn "npm $NPM_VERSION does not match the frontend's pin — installing npm $NPM_TARGET_VERSION..."
+  npm install -g "npm@$NPM_TARGET_VERSION" \
+    || fail "Could not install npm $NPM_TARGET_VERSION. Install it manually: https://nodejs.org"
+  NPM_VERSION=$(npm --version)
+  if [ "${NPM_VERSION%%.*}" != "${NPM_TARGET_VERSION%%.*}" ] \
+      || ! version_at_least "$NPM_VERSION" "$NPM_TARGET_VERSION"; then
+    fail "npm $NPM_TARGET_VERSION was installed but npm $NPM_VERSION is still on PATH. Open a fresh terminal and re-run quickstart."
+  fi
+  ok "npm $NPM_VERSION"
+fi
+
+# ── 4. Check / install Ollama ────────────────────────────────────────
+info "Checking Ollama..."
+if command -v ollama &>/dev/null; then
+  ok "Ollama found"
+else
+  warn "Ollama not found — installing..."
+  case "$(uname -s)" in
+    Darwin)
+      if command -v brew &>/dev/null; then
+        brew install ollama
+      else
+        echo "  Download Ollama from https://ollama.com/download"
+        echo "  Then re-run this script."
+        exit 1
+      fi
+      ;;
+    Linux)
+      curl -fsSL https://ollama.com/install.sh | sh
+      ;;
+    *)
+      echo "  Download Ollama from https://ollama.com/download"
+      echo "  Then re-run this script."
+      exit 1
+      ;;
+  esac
+  ok "Ollama installed"
+fi
+
+# ── 5. Start Ollama if not running ───────────────────────────────────
+info "Checking if Ollama is running..."
+if curl -sf http://localhost:11434/api/tags &>/dev/null; then
+  ok "Ollama is running"
+else
+  info "Starting Ollama..."
+  ollama serve &>/dev/null &
+  CLEANUP_PIDS+=($!)
+  sleep 3
+  if curl -sf http://localhost:11434/api/tags &>/dev/null; then
+    ok "Ollama started"
+  else
+    fail "Could not start Ollama. Try running 'ollama serve' manually."
+  fi
+fi
+
+# ── 6. Pull a starter model ─────────────────────────────────────────
+MODEL="${Locus_MODEL:-qwen3:0.6b}"
+info "Ensuring model '$MODEL' is available..."
+if ollama list 2>/dev/null | grep -q "$MODEL"; then
+  ok "Model '$MODEL' already pulled"
+else
+  info "Pulling '$MODEL' (this may take a minute)..."
+  ollama pull "$MODEL"
+  ok "Model '$MODEL' ready"
+fi
+
+# ── 7. Install Python dependencies ──────────────────────────────────
+info "Installing Python dependencies..."
+uv sync --extra desktop --extra tools-search --quiet 2>/dev/null \
+  || uv sync --extra desktop --extra tools-search
+ok "Python dependencies installed"
+
+# ── 7b. Build Rust extension ──────────────────────────────────────
+info "Building Rust extension..."
+(cd rust && uv run maturin develop -m crates/locus-python/Cargo.toml --quiet 2>/dev/null \
+  || uv run maturin develop -m crates/locus-python/Cargo.toml)
+ok "Rust extension built"
+
+# ── 8. Install frontend dependencies ────────────────────────────────
+info "Installing frontend dependencies..."
+(cd frontend && npm install --silent 2>/dev/null || npm install)
+ok "Frontend dependencies installed"
+
+# ── 9. Start backend ────────────────────────────────────────────────
+info "Starting backend API server on port 8000..."
+if curl -sf http://localhost:8000/health &>/dev/null; then
+  fail "An Locus server is already running on port 8000. Stop it before re-running quickstart so updated environment variables are applied."
+fi
+uv run jarvis serve --port 8000 &>/dev/null &
+BACKEND_PID=$!
+CLEANUP_PIDS+=("$BACKEND_PID")
+sleep 3
+
+if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+  fail "Backend exited during startup. Run 'uv run jarvis serve --port 8000' to see the error."
+elif curl -sf http://localhost:8000/health &>/dev/null; then
+  ok "Backend running at http://localhost:8000"
+else
+  warn "Backend may still be starting..."
+fi
+
+# ── 10. Start frontend ──────────────────────────────────────────────
+info "Starting frontend dev server on port 5173..."
+(cd frontend && npm run dev) &>/dev/null &
+CLEANUP_PIDS+=($!)
+sleep 3
+ok "Frontend running at http://localhost:5173"
+
+# ── 11. Open browser ────────────────────────────────────────────────
+URL="http://localhost:5173"
+info "Opening $URL ..."
+case "$(uname -s)" in
+  Darwin) open "$URL" ;;
+  Linux)  xdg-open "$URL" 2>/dev/null || true ;;
+  MINGW*|MSYS*|CYGWIN*) cmd /c start "" "$URL" 2>/dev/null || true ;;
+  *)      true ;;
+esac
+
+echo ""
+echo -e "${GREEN}${BOLD}  Locus is running!${NC}"
+echo ""
+echo "  Chat UI:  http://localhost:5173"
+echo "  API:      http://localhost:8000"
+echo "  Model:    $MODEL"
+echo ""
+echo "  Press Ctrl+C to stop all services."
+echo ""
+
+wait

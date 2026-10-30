@@ -1,160 +1,201 @@
-# 🤝 Contributing to Kommy (AURA)
+# Contributing to Locus
 
-First off — thank you for considering contributing. Whether it's fixing a typo, proposing a feature, or building an entire module, every contribution moves the project forward.
+Thank you for your interest in contributing to Locus! This guide covers everything you need to know — from why to contribute, to how to submit your first pull request.
 
-**Kommy** is the voice assistant users talk to. **AURA** is the offline architecture underneath. The repo is tagged on GitHub for discoverability — if you found us via `voice-assistant`, `ollama`, `whisper`, `local-llm`, or similar topics, jump to [Contribute by topic](#contribute-by-topic) below.
+---
 
-AURA is a fully offline AI developer assistant. We value clean code, clear documentation, and a welcoming community.
+## Why Contribute?
+
+Contributing to Locus isn't just about code — it's about building the future of on-device AI together. Here's what you get:
+
+### Paper Acknowledgment
+
+All contributors with merged pull requests will be acknowledged as contributors on the Locus paper release.
+
+### Mac Mini Giveaway
+
+We're giving away a Mac Mini to one lucky contributor! Install Locus on your personal machine and opt in via the desktop app to share anonymized savings data (FLOPs, dollar cost, energy) for a chance to win. Your data is fully anonymous — no IP, no hardware info beyond savings metrics. You must share your email via the desktop app to be eligible.
+
+See the [Savings Leaderboard](https://locus.github.io/Locus/leaderboard/) for details.
+
+### Path to Maintainership
+
+Consistent contributors can grow into project maintainers:
+
+- **Contributor** — anyone with a merged PR
+- **Reviewer** — invited after 3+ merged PRs in a domain area, can review PRs
+- **Maintainer** — reviewers who demonstrate sustained engagement and good judgment
+
+### Recognition
+
+Contributors are recognized in release notes and on our GitHub repository.
+
+---
+
+## Ways to Contribute
+
+### Good First Contributions
+
+These are great starting points for new contributors:
+
+- Documentation improvements and typo fixes
+- Bug reports with reproducible steps
+- New eval datasets and scorers
+- Test coverage improvements
+
+Look for issues labeled [`good-first-issue`](https://github.com/locus/Locus/labels/good-first-issue).
+
+### Ideal Contributions
+
+- Bug fixes with tests
+- Performance improvements
+- New tools, engines, or agents following the [registry pattern](docs/development/contributing.md#registry-pattern)
+- New channel integrations (Telegram, Discord, Slack, etc.)
+
+### Harder to Review
+
+These require more context and review time. **Please open an issue for discussion before starting a PR:**
+
+- New primitives or major extensions to existing ones
+- Large refactors
+- Changes to core abstractions (`BaseAgent`, `InferenceEngine`, etc.)
+
+### May Not Be Accepted
+
+To avoid wasted effort, note that PRs in these categories are unlikely to be merged:
+
+- Changes that break backwards compatibility in the public API
+- Changes that add significant new dependencies without justification
+- Changes that add friction to the user experience
 
 ---
 
 ## Getting Started
 
-### 1. Fork and Clone
+### Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.10+ | Required |
+| [uv](https://docs.astral.sh/uv/) | Latest | Package manager |
+| Node.js | 22+ | Only needed for ClaudeCodeAgent and WhatsApp channel |
+
+### Setup
 
 ```bash
-git clone https://github.com/<your-username>/AURA.git
-cd AURA
-pip install -r requirements.txt
+git clone https://github.com/locus/Locus.git
+cd Locus
+uv sync --extra dev
 ```
 
-### 2. Create a Branch
+### Pre-commit Hooks
 
-Always branch from `main`. Use the naming conventions below.
+We use [pre-commit](https://pre-commit.com/) to run linting and formatting checks before each commit:
 
 ```bash
-git checkout -b feat/your-feature-name
+uv run pre-commit install
 ```
 
-### 3. Make Your Changes
+This installs Git hooks that automatically run [Ruff](https://docs.astral.sh/ruff/) on every commit. If the hooks fail, fix the issues and commit again.
 
-- Keep each module independent — no cross-dependencies between modules
-- Add docstrings to all public functions
-- Include error handling
-- Test locally (offline — no network calls)
-
-### 4. Commit Your Changes
-
-We follow [Conventional Commits](https://www.conventionalcommits.org/).
-
-**Format:** `type(module): short description`
-
-```
-feat(core): add LLM backend abstraction
-fix(runtime): resolve path traversal edge case in the router
-docs(readme): update architecture diagram
-chore(.github): add PR template
-test(modules): add unit tests for LLM brain
-refactor(runtime): simplify dispatcher routing
-```
-
-**Types:** `feat` · `fix` · `docs` · `chore` · `test` · `refactor` · `style`
-
-### 5. Push and Open a PR
-
-```bash
-git push origin feat/your-feature-name
-```
-
-Then open a Pull Request against `main`. Fill out the [PR template](.github/PULL_REQUEST_TEMPLATE.md) — it takes 30 seconds and helps reviewers understand your change.
+For detailed development setup, code conventions, and project structure, see the [Development Guide](docs/development/contributing.md).
 
 ---
 
-## Branch Naming Conventions
+## Claiming Issues
 
-| Branch Type | Pattern | Example |
+1. Browse the [Roadmap](https://locus.github.io/Locus/development/roadmap/) for an item that interests you
+2. Check if a [GitHub issue](https://github.com/locus/Locus/issues) already exists for it — if not, [open one](https://github.com/locus/Locus/issues/new/choose) describing what you'd like to work on
+3. Comment **"take"** on the issue to get auto-assigned
+4. Fork, branch, and start working
+
+If you've claimed an issue but can't finish it, please leave a comment so someone else can pick it up.
+
+---
+
+## Proposing Changes
+
+### Trivial Changes
+
+For small fixes (typos, doc improvements, simple bug fixes), go ahead and open a PR directly.
+
+### Non-trivial Changes
+
+For larger changes — new features, refactors, new dependencies — **open an issue first** to discuss the approach. This saves everyone time by catching design issues early.
+
+Use the appropriate [issue template](https://github.com/locus/Locus/issues/new/choose):
+- **Bug Report** — for bugs with reproduction steps
+- **Feature Request** — for new functionality
+- **New Eval Dataset** — for contributing benchmarks
+
+---
+
+## Pull Request Process
+
+### Before Submitting
+
+1. Run the full test suite:
+   ```bash
+   uv run pytest tests/ -v
+   ```
+2. Run the linter:
+   ```bash
+   uv run ruff check src/ tests/
+   ```
+3. Run the formatter:
+   ```bash
+   uv run ruff format --check src/ tests/
+   ```
+4. Add tests for new functionality
+5. Follow the [registry pattern](docs/development/contributing.md#registry-pattern) for new components
+
+### Commit Messages
+
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add FAISS memory backend
+fix: handle empty tool responses in orchestrator
+docs: update engine discovery documentation
+test: add coverage for BM25 backend
+refactor: simplify agent base class helpers
+```
+
+Keep the first line under 72 characters. Reference relevant issues (e.g., `fixes #42`).
+
+### What Makes a Good PR
+
+- **Focused** — one feature, fix, or refactor per PR
+- **Tested** — includes unit tests covering new code paths
+- **Documented** — updates docstrings and docs if adding public API
+- **Backwards compatible** — avoids breaking existing interfaces without discussion
+
+---
+
+## Contribution Areas
+
+Locus is built on five composable primitives. Here's where you can contribute:
+
+| Area | What to Build | Guide |
 |---|---|---|
-| Feature | `feat/module-description` | `feat/whisper-stt-integration` |
-| Bug fix | `fix/module-description` | `fix/git-push-auth` |
-| Documentation | `docs/description` | `docs/architecture-update` |
-| Experiment | `exp/description` | `exp/llama-prompt-tuning` |
-
----
-
-## Contribute by topic
-
-GitHub topics on this repo mirror real modules. Pick the row that matches your experience:
-
-| Topic | Directory | Good first tasks |
-|---|---|---|
-| `python`, `open-source` | anywhere | docs, tests, type hints, CI |
-| `voice-assistant`, `whisper`, `kommy` | `aura/modules/stt.py`, `wake_word.py` | cross-platform wake-word tests ([#2](https://github.com/aryanjsx/AURA/issues/2)) |
-| `ollama`, `local-llm`, `ai` | `aura/core/ollama_client.py`, `llm_brain.py`, `intent_router.py` | router prompts, streaming edge cases |
-| `piper-tts`, `offline-ai` | `aura/modules/tts.py` | TTS engine config, failover tests |
-| `automation`, `developer-tools` | `aura/executors/`, `plugins/system/` | new allowlisted commands |
-| `gitpython` | `plugins/git/` | Phase 3 git plugin |
-| `docker-sdk` | `plugins/docker/` | Phase 3 docker plugin |
-| `chromadb` | `plugins/memory/` | Phase 6 memory schema |
-| `pyqt6` | `aura/gui/` (planned) | Phase 5 dashboard |
-
-**Claim work:** comment on an issue ("I'd like to work on this") or open a PR linked to an issue. Unclaimed ideas welcome via [Feature Request](https://github.com/aryanjsx/AURA/issues/new?template=feature_request.md).
-
----
-
-## Where to Contribute
-
-Each module has a clear home in the codebase:
-
-| Module | Directory | Description |
-|---|---|---|
-| System Layer | `core/` | Intent, policy, config, I/O abstractions, LLM backend |
-| Runtime | `aura/runtime/` | Router, registry, engine, worker client, planner |
-| Security | `aura/security/` | Sandbox, policy, safety gate, audit chain, manifest |
-| Worker | `aura/worker/` | Isolated execution subprocess |
-| Plugins | `plugins/` | Worker-only executors (file, process, npm, monitor) |
-| Dev Tools | `plugins/git/`, `plugins/docker/` | *(Phase 3 — planned)* GitPython, Docker SDK |
-| GUI | `aura/gui/` | *(Phase 4 — planned)* PyQt6 dashboard |
-| Memory | `aura/memory/` | *(Phase 5 — planned)* ChromaDB vector store |
-| Documentation | `docs/` | Architecture docs, guides |
-
-### Currently Accepting Contributions
-
-#### Phase 0 + Phase 1 — Completed (maintenance)
-- Additional test coverage for the automation modules
-- Documentation improvements
-- `.gitignore` and project config refinements
-- Bug reports and fixes against the secure-execution core
-
-#### Phase 2 — Voice + Intelligence (maintenance + polish)
-- Whisper STT integration and optimization
-- Ollama prompt engineering for developer tasks
-- Piper TTS voice configuration
-- SafetyGate audit coverage ([#3](https://github.com/aryanjsx/AURA/issues/3))
-- Cross-platform wake-word and mic tests ([#2](https://github.com/aryanjsx/AURA/issues/2))
-
-#### Phase 3+ — Future (planned)
-- Git automation edge cases
-- Docker SDK integration
-- PyQt6 dashboard components
-- ChromaDB memory schema design
-
----
-
-## Coding Standards
-
-- **Python 3.10+** — use type hints and `from __future__ import annotations`
-- **Docstrings** on all public functions (NumPy-style)
-- **Error handling** — never let exceptions propagate silently
-- **No cloud dependencies** — everything must work fully offline
-- **No hardcoded secrets** — use environment variables
-- **Modular design** — each file should be independently importable
-
----
-
-## Reporting Issues
-
-- Use the [Bug Report](https://github.com/aryanjsx/AURA/issues/new?template=bug_report.md) template for bugs
-- Use the [Feature Request](https://github.com/aryanjsx/AURA/issues/new?template=feature_request.md) template for ideas
-- Use the [Module Proposal](https://github.com/aryanjsx/AURA/issues/new?template=module_proposal.md) template to propose a new AURA module
-
-Want to claim an issue? Comment "I'd like to work on this" and we'll assign it to you.
+| **Intelligence** | Model catalog entries, routing strategies | [Dev Guide](docs/development/contributing.md) |
+| **Engines** | New inference backends (e.g., TensorRT, ONNX) | [Dev Guide](docs/development/contributing.md) |
+| **Agents** | New agent types, agent improvements | [Dev Guide](docs/development/contributing.md) |
+| **Tools** | New tools (browser, API clients, etc.) | [Dev Guide](docs/development/contributing.md) |
+| **Learning** | Router policies, reward functions, training | [Dev Guide](docs/development/contributing.md) |
+| **Evals** | New datasets, scorers, benchmark configs | [Dev Guide](docs/development/contributing.md) |
+| **Channels** | Chat platform integrations | [Dev Guide](docs/development/contributing.md) |
+| **Rust Port** | PyO3 bindings, crate parity with Python | See `rust/` directory |
 
 ---
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold a welcoming, respectful, and harassment-free environment.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold this code.
 
 ---
 
-Thank you for helping build the future of offline AI dev tools. ⚡
+## Questions?
+
+- Open a [Discussion](https://github.com/locus/Locus/discussions) for questions and help
+- Check the [documentation](https://locus.github.io/Locus/) for guides and API reference

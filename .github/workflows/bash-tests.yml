@@ -1,0 +1,29 @@
+name: Bash tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/install/**'
+      - 'tests/install/bash/**'
+      - '.github/workflows/bash-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/install/**'
+      - 'tests/install/bash/**'
+
+jobs:
+  bats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install bats-core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats python3-tomlkit
+
+      - name: Run bats tests
+        env:
+          Locus_TEST_PYTHON: /usr/bin/python3
+        run: bats tests/install/bash/

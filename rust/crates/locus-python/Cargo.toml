@@ -1,0 +1,32 @@
+[package]
+name = "locus-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "locus_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+locus-core = { path = "../locus-core" }
+locus-engine = { path = "../locus-engine" }
+locus-security = { path = "../locus-security" }
+locus-tools = { path = "../locus-tools" }
+locus-agents = { path = "../locus-agents" }
+locus-traces = { path = "../locus-traces" }
+locus-telemetry = { path = "../locus-telemetry" }
+locus-learning = { path = "../locus-learning" }
+locus-mcp = { path = "../locus-mcp" }
+locus-sessions = { path = "../locus-sessions" }
+locus-workflow = { path = "../locus-workflow" }
+locus-skills = { path = "../locus-skills" }
+locus-recipes = { path = "../locus-recipes" }
+locus-templates = { path = "../locus-templates" }
+locus-a2a = { path = "../locus-a2a" }
+locus-scheduler = { path = "../locus-scheduler" }
+pyo3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+once_cell = { workspace = true }
+parking_lot = { workspace = true }

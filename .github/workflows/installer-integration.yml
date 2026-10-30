@@ -1,0 +1,118 @@
+name: Installer integration
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/install/**'
+      - 'src/locus/cli/**'
+      - 'tests/install/**'
+      - '.github/workflows/installer-integration.yml'
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  container-matrix:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - fedora:40
+
+    container: ${{ matrix.image }}
+
+    steps:
+      - name: Install prereqs (Ubuntu/Debian)
+        if: contains(matrix.image, 'ubuntu') || contains(matrix.image, 'debian')
+        run: |
+          apt-get update
+          apt-get install -y curl git python3 sudo
+
+      - name: Install prereqs (Fedora)
+        if: contains(matrix.image, 'fedora')
+        run: |
+          dnf install -y curl git python3 sudo
+
+      - name: Create non-root user
+        run: useradd -m -s /bin/bash testuser
+
+      - uses: actions/checkout@v7
+        with:
+          path: locus-src
+
+      - name: Install Ollama mock
+        run: install -m 755 "$GITHUB_WORKSPACE/locus-src/tests/install/bash/stubs/ollama-mock" /usr/local/bin/ollama
+
+      - name: Run installer
+        run: |
+          chown -R testuser:testuser /home/testuser "$GITHUB_WORKSPACE/locus-src"
+          su testuser -c '
+            export Locus_REPO_URL=file://'"$GITHUB_WORKSPACE"'/locus-src
+            cd '"$GITHUB_WORKSPACE"'/locus-src
+            bash scripts/install/install.sh --no-bg-orchestrator
+          '
+
+      - name: Verify install state
+        run: |
+          su testuser -c '
+            test -d ~/.locus/src
+            test -d ~/.locus/.venv
+            test -f ~/.locus/config.toml
+            test -f ~/.locus/.state/install-state.json
+            test -L ~/.local/bin/jarvis
+          '
+
+      - name: Verify jarvis --version
+        run: su testuser -c '~/.local/bin/jarvis --version'
+
+      - name: Verify jarvis doctor exits 0
+        run: su testuser -c '~/.local/bin/jarvis doctor'
+
+      - name: Verify uninstall is clean
+        run: |
+          su testuser -c '
+            ~/.local/bin/jarvis-uninstall --yes
+            test ! -d ~/.locus
+            test ! -L ~/.local/bin/jarvis
+          '
+
+  macos:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Ollama mock
+        run: sudo install -m 755 tests/install/bash/stubs/ollama-mock /usr/local/bin/ollama
+
+      - name: Run installer
+        run: |
+          export Locus_REPO_URL=file://$(pwd)
+          bash scripts/install/install.sh --no-bg-orchestrator
+
+      - name: Verify install state
+        run: |
+          test -d ~/.locus/src
+          test -d ~/.locus/.venv
+          test -f ~/.locus/config.toml
+          test -L ~/.local/bin/jarvis
+
+      - name: Verify jarvis --version
+        run: ~/.local/bin/jarvis --version
+
+      - name: Verify jarvis doctor exits 0
+        run: ~/.local/bin/jarvis doctor
+
+      - name: Verify uninstall is clean
+        run: |
+          ~/.local/bin/jarvis-uninstall --yes
+          test ! -d ~/.locus
+          test ! -L ~/.local/bin/jarvis

@@ -1,1 +1,0 @@
-"""AURA core infrastructure package."""

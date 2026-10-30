@@ -1,74 +1,192 @@
-name: AURA CI
+name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra framework-comparison --extra server
+
+      - name: Ruff check
+        run: uv run ruff check src/ tests/
+
+      - name: Ruff format check
+        run: uv run ruff format --check src/ tests/
+
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: actions/cache@v6
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libportaudio2 portaudio19-dev libgomp1 ffmpeg
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
 
       - name: Install dependencies
+        run: uv sync --extra dev --extra framework-comparison --extra server --extra inference-cloud
+
+      - name: Build Rust extension
+        run: uv run maturin develop --manifest-path rust/crates/locus-python/Cargo.toml
+
+      - name: Run tests
+        # COVERAGE_CORE=sysmon uses CPython 3.12's sys.monitoring backend,
+        # which is dramatically cheaper than the default C trace function.
+        # -n auto fans the suite out across all runner cores via pytest-xdist.
+        env:
+          COVERAGE_CORE: sysmon
         run: |
-          pip install --upgrade pip
-          pip install flake8 pytest
-          pip install -r requirements.txt
+          uv run pytest tests/ -n auto -q --tb=short -m "not live and not cloud and not hub" \
+            --cov=locus \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=60
 
-      - name: Install Ollama and pull embedding model
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve > /tmp/ollama.log 2>&1 &
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:11434/api/tags > /dev/null; then
-              echo "Ollama ready after ${i} attempts"
-              break
-            fi
-            sleep 2
-          done
-          curl -sf http://localhost:11434/api/tags
-          ollama pull nomic-embed-text
-          ollama pull llama3.2:3b
-
-      - name: Run linter
-        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Run unit tests
-        run: pytest tests/unit/ -v --tb=short --junitxml=test-results.xml
-
-      - name: Run all tests
-        run: pytest tests/ -q
-
-      - name: Test summary
+      - name: Upload coverage report
         if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
+
+  # Windows job — empirically exercises the platform-specific code paths that
+  # the Ubuntu `test` job can never reach: GlobalMemoryStatusEx RAM detection
+  # (#373) and the cp9xx -> UTF-8 stdout reconfigure (#293). Also the only CI
+  # job that builds + imports the mandatory `locus_rust` PyO3 extension
+  # on Windows. Public repo -> Windows runner minutes are free.
+  #
+  # All `run:` steps use static commands only (no `github.event.*`
+  # interpolation), so there is no workflow-injection surface here.
+  test-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 = common; 3.13 = the supported ceiling — installing there guards
+        # against a numpy/native wheel gap at the top of the range (#350), which
+        # is exactly how the source-build failure slips in on Windows.
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra server
+
+      # Pure-Python check — runs before the Rust build so a flaky toolchain
+      # install can never mask the actual RAM-detection verification.
+      - name: Verify Windows RAM detection (#373)
+        shell: bash
         run: |
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          if [ -f test-results.xml ]; then
-            TESTS=$(grep -oP 'tests="\K[^"]+' test-results.xml || echo "?")
-            FAILURES=$(grep -oP 'failures="\K[^"]+' test-results.xml || echo "?")
-            ERRORS=$(grep -oP 'errors="\K[^"]+' test-results.xml || echo "?")
-            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Tests  | $TESTS |" >> $GITHUB_STEP_SUMMARY
-            echo "| Failures | $FAILURES |" >> $GITHUB_STEP_SUMMARY
-            echo "| Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
-          fi
+          uv run python -c "from locus.core.config import _total_ram_gb; ram = _total_ram_gb(); print(f'GlobalMemoryStatusEx RAM = {ram} GB'); assert ram > 0, f'Windows RAM detection returned {ram}, expected > 0'"
+
+      - name: Run Windows-specific tests (hardware + CLI + daemon)
+        shell: bash
+        run: |
+          uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py tests/cli/test_daemon_cmd.py tests/cli/test_daemon_state.py tests/core/test_utils.py tests/install/test_windows_prerequisites.py -v -m "not live and not cloud"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify GUI process ownership and cleanup
+        shell: bash
+        run: uv run pytest tests/cli/test_gui_cmd.py tests/cli/test_gui_lifecycle.py -v
+
+      - name: Build + import the PyO3 extension on Windows
+        shell: bash
+        run: |
+          uv run maturin develop --manifest-path rust/crates/locus-python/Cargo.toml
+          uv run python -c "import locus_rust; print('locus_rust imports on Windows OK')"
+
+      - name: Smoke-test CLI
+        shell: bash
+        run: |
+          uv run jarvis --version
+
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cargo cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: rust-${{ runner.os }}-
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      # Standalone handoff example: intentionally not a runtime workspace member.
+      - name: Cross-device travel example
+        run: |
+          cargo fmt --manifest-path ../examples/cross_device_travel/Cargo.toml --check
+          cargo clippy --locked --manifest-path ../examples/cross_device_travel/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path ../examples/cross_device_travel/Cargo.toml

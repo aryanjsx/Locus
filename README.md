@@ -1,3 +1,4 @@
+
 <div align="center">
 
 # Locus
@@ -16,138 +17,178 @@
 
 </div>
 
----
+## Why Locus?
 
-> **Project status: planning.** Locus is a fresh restart of this project, which was previously called AURA / Kommy. The requirements and scope are done; **there is no working Locus code yet.** The next step is a set of experiments to choose the models, then the first code milestone.
->
-> The v1 (AURA / Kommy) code is still in this repository for reference and will be replaced. See [About v1](#about-v1).
+Personal AI agents are exploding in popularity, but nearly all of them still route intelligence through cloud APIs. Your "personal" AI continues to depend on someone else's server. At the same time, our [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) research showed that local language models already handle 88.7% of single-turn chat and reasoning queries, with intelligence efficiency improving 5.3× from 2023 to 2025. The models and hardware are increasingly ready. What has been missing is the software stack to make local-first personal AI practical.
 
----
+Locus is that stack. It is a framework for local-first personal AI, built around three core ideas: shared primitives for building on-device agents; evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy; and a learning loop that improves models using local trace data. The goal is simple: make it possible to build personal AI agents that run locally by default, calling the cloud only when truly necessary. Locus aims to be both a research platform and a production foundation for local AI, in the spirit of PyTorch.
 
-## Why Locus
+## Installation
 
-Most AI assistants are a chat window connected to someone else's server. Locus is different:
+Pick your platform and run one command. Each installer handles [uv](https://docs.astral.sh/uv/), the Python venv, Ollama, and a starter model — about 3 minutes on broadband.
 
-- **Private by design:** everything runs locally. No accounts, no API keys, no telemetry.
-- **Offline first:** every core feature works with no internet connection. Online features are **off by default**, and you switch each one on yourself.
-- **Does things, not just talks:** checks your system, opens and closes apps, and manages files, as well as answering questions.
-- **Safe with your data:** anything destructive needs your manual confirmation, and deleted files always go to the Recycle Bin.
-- **Runs on ordinary laptops:** 8 GB of RAM is enough, no GPU needed.
-
-## MVP scope
-
-About 20 actions in three groups. Each command does one thing. The full list, with test phrases, is in the [command catalog](docs/locus/02-command-catalog.md).
-
-| Group | What you can ask |
+| Platform | One-liner |
 |---|---|
-| **System info** | CPU, RAM, disk space, battery, top processes, date and time |
-| **Apps, files & power** | Open/close apps, open folders, create/rename/move/delete files and folders, search files, lock, shut down, restart |
-| **Q&A** | General questions and short code answers from a local language model |
+| **macOS · Linux · WSL2** | `curl -fsSL https://locus.github.io/Locus/install.sh \| bash` |
+| **Native Windows** | `irm https://locus.github.io/Locus/install.ps1 \| iex` |
+| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/locus/Locus/releases) |
 
-**How you talk to it:**
-- **Text first.** Voice uses exactly the same pipeline: speech is transcribed to text, then handled like typed text.
-- **Push-to-talk** hotkey for voice. A wake word ("Hey Locus") comes later.
-- **English only** in v1.
+Then `jarvis` to start. The Rust extension and larger models continue downloading in the background; `jarvis doctor` shows status.
 
-**Not in the MVP:** wake word, conversation memory, web search, Git/Docker/email/music integrations, multi-step commands, Linux/macOS. If you ask for something that needs the internet, Locus says *"I can't look that up yet"*; it never makes up live information.
+Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://locus.github.io/Locus/getting-started/install/).
 
-## Safety
+## Quick Start
 
-| Risk level | What Locus does | Examples |
-|---|---|---|
-| **Read-only** | Does it straight away | "What's my CPU?", "Find my resume" |
-| **Reversible** | Does it, then tells you what it did | "Open Chrome", "Create a folder called projects" |
-| **Check first** | Asks a question; answer within 15 s or it cancels | "Close Notepad" → *"Have you saved your work?"* |
-| **Destructive** | Shows exactly what will happen; **you must press the confirm key or click Confirm** within 15 s | Delete a file, shut down, restart |
-
-- **A spoken "yes" is never enough for destructive actions.** Confirmation is always a key press or click.
-- **Deletes go to the Recycle Bin.** If a drive has no Recycle Bin, Locus refuses rather than deleting permanently.
-- **System locations** (Windows, Program Files, whole user folders) get a clear red warning before you confirm.
-- Apps are always closed normally, never force-killed, so their own "Save changes?" dialog still appears.
-- Only **your own words** can trigger actions. Text that Locus reads can't.
-- Every destructive action is written to an audit log.
-
-## System requirements
-
-| | Minimum | Recommended |
-|---|---|---|
-| OS | Windows 10/11 (64-bit) | Windows 11 (64-bit) |
-| RAM | 8 GB | 16 GB |
-| GPU | Not required | Not required |
-| CPU | 4 cores with AVX2 (≈2018+) | 6–8 cores (≈2020+) |
-| Free disk | ~5 GB | ~10 GB |
-
-You'll be able to install Locus two ways: with the **Windows installer (`.exe`)** from the [website](https://aryanjsx.github.io/Locus/), or from the command line with **`winget install Locus`**. Both install the same build. On first run, Locus checks your hardware and **recommends the right models for your machine**. It downloads them only after you agree.
-
-## Tech stack
-
-Planned. The model and engine choices are confirmed by benchmarks during the experiment phase.
-
-| Layer | Choice |
-|---|---|
-| Language | Python 3.12 |
-| LLM engine | [`llama.cpp`](https://github.com/ggml-org/llama.cpp), bundled in the installer |
-| LLM models (candidates) | 8 GB: Qwen3.5 2B / Gemma 4 E2B / Llama 3.2 3B · 16 GB: Qwen3.5 4B / Gemma 4 E4B / Phi-4-mini |
-| Command routing | Structured JSON output (schema-constrained) + exact-match fast path for common commands |
-| Speech-to-text | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (`base.en` / `small.en`); Moonshine as an alternative |
-| Text-to-speech | Piper (default), Kokoro (optional on 16 GB), Windows voices as fallback |
-| System access | `psutil`, `send2trash`, `pycaw`, `subprocess` (argument lists only, no shell) |
-| Schemas and config | Pydantic v2, TOML |
-| Audio / hotkey | `sounddevice`, `pynput` |
-| Tooling | uv, Ruff, Pyright, pytest, pre-commit, GitHub Actions, Conventional Commits |
-
-**Architecture:** one pipeline for every input:
-
-```
-Input (text / voice) → Router → Safety gate → Action registry → Output (screen / speech)
+```bash
+jarvis                          # start chatting (default: chat-simple)
+jarvis gui                      # start the graphical browser interface
+jarvis init --preset <name> --force  # replace config with a starter preset
 ```
 
-Features are plugins: Python modules that register actions, each with a name, a parameter schema and a risk level.
+`jarvis gui` starts the local API server and frontend, then opens the graphical
+chat interface in your default browser. It requires Node.js 22+ and is
+available from a source checkout; packaged desktop installers are available
+from the [latest release](https://github.com/locus/Locus/releases).
 
-## Roadmap
+> Prefix `jarvis ...` with `uv run`, or `source .venv/bin/activate` first.
 
-| Stage | Deliverable | Status |
-|---|---|---|
-| **Planning** | Scope, safety policy, stack, command catalog | ✅ Done |
-| **Experiments** | Benchmark LLM routing accuracy, speech-to-text and TTS speed, and peak RAM on real hardware ([harness](experiments/README.md)) | 🔬 In progress |
-| **M0: skeleton** | Typed "what's my CPU" → spoken answer, through the full pipeline | Planned |
-| **M1: voice** | Push-to-talk voice input | Planned |
-| **M2: Q&A** | Local LLM answers streamed to speech | Planned |
-| **M3: safety** | Confirmation flow and audit log | Planned |
-| **M4: MVP** | Every command in the catalog working end to end | Planned |
-| **M5: install** | Windows `.exe` and command-line install, with hardware check and model recommendation | Planned |
-| **Later** | Web search (opt-in), wake word, Linux/macOS, more integrations | Future |
+#### Run from a Windows source checkout
 
-A feature counts as done only when its catalog tests pass end to end through the real app. This README lists only features that meet that bar.
+Install [uv](https://docs.astral.sh/uv/), [Node.js 22+](https://nodejs.org/),
+and [Ollama](https://ollama.com/), then run these commands from the repository
+root in PowerShell:
 
-## Documentation
+```powershell
+uv sync --extra desktop
+Push-Location frontend
+npm install
+Pop-Location
+ollama pull qwen3:0.6b
+uv run jarvis gui
+```
 
-- [Scope (MVP)](docs/locus/01-scope.md): vision, hardware tiers, safety and privacy policy, quality targets, decisions log
-- [Command catalog](docs/locus/02-command-catalog.md): every MVP action and its test phrases, including tricky near-misses
-- [Experiments](experiments/README.md): the stage 2 benchmarks (router accuracy, speech-to-text, TTS, peak RAM) and how to run them
+If Ollama is not already running, start it in another terminal with
+`ollama serve`. The GUI should open in your browser.
 
-## About v1
+To run the test suite from the repository root:
 
-This repo originally contained **AURA / Kommy**, a first attempt at the same idea. It's being restarted as Locus because:
+```powershell
+uv sync --extra dev
+uv run pytest tests/ -v
+```
 
-- the voice pipeline and the text CLI were two separate systems, and the voice path skipped the security layer;
-- several advertised voice commands didn't actually work end to end;
-- the regex-based command routing misread everyday phrases.
+| Preset | What it does |
+|---|---|
+| `morning-digest-mac` / `morning-digest-linux` / `morning-digest-minimal` | Spoken daily briefing from email, calendar, health, news |
+| `deep-research` | Multi-hop research across indexed docs with citations |
+| `code-assistant` | Agent with code execution, file I/O, and shell access |
+| `scheduled-monitor` | Stateful agent on a schedule with memory |
+| `chat-simple` | Lightweight conversation, no tools |
 
-The v1 code is still here for reference and will be removed as Locus replaces it.
+Example:
+
+```bash
+jarvis init --preset morning-digest-mac --force
+jarvis connect gdrive          # one OAuth covers Gmail / Calendar / Tasks
+jarvis digest --fresh          # generate and play your first briefing
+```
+
+Per-preset deep dives: [morning digest](https://locus.github.io/Locus/user-guide/morning-digest/) · [deep research](https://locus.github.io/Locus/user-guide/deep-research/) · [code assistant](https://locus.github.io/Locus/user-guide/code-assistant/) · [scheduled monitor](https://locus.github.io/Locus/user-guide/scheduled-monitor/) · [chat simple](https://locus.github.io/Locus/user-guide/chat-simple/) · or the full [quickstart guide](https://locus.github.io/Locus/getting-started/quickstart/).
+
+### Skills
+
+Skills teach agents how to better use tools and improve their reasoning. Every skill is a tool — agents discover them from a catalog and invoke them on demand.
+
+```bash
+# Install skills from public sources
+jarvis skill install hermes:arxiv
+jarvis skill sync hermes --category research
+
+# Use skills with any agent
+jarvis ask "Use the code-explainer skill to explain this Python code: for i in range(5): print(i*2)"
+
+# Optimize skills from your trace history
+jarvis optimize skills --policy dspy
+
+# Benchmark the impact
+jarvis bench skills --max-samples 5 --seeds 42
+```
+
+Import from [Hermes Agent](https://github.com/NousResearch/hermes-agent) (~150 skills), [OpenClaw](https://github.com/openclaw/skills) (~13,700 community skills), or any GitHub repo. Skills follow the [agentskills.io](https://agentskills.io/specification) open standard.
+
+See the [Skills User Guide](https://locus.github.io/Locus/user-guide/skills/) and [Skills Tutorial](https://locus.github.io/Locus/tutorials/skills-workflow/) for details.
+
+### Built-in Agents
+
+Locus ships with eight built-in agents across three execution modes (on-demand, scheduled, continuous):
+
+| Agent | Type | What it does |
+|-------|------|-------------|
+| `morning_digest` | Scheduled | Daily briefing from email, calendar, health, news — with TTS audio |
+| `deep_research` | On-demand | Multi-hop research with citations across web and local docs |
+| `monitor_operative` | Continuous | Long-horizon monitoring with memory, compression, and retrieval |
+| `orchestrator` | On-demand | Multi-turn reasoning with automatic tool selection |
+| `native_react` | On-demand | ReAct (Thought-Action-Observation) loop agent |
+| `operative` | Continuous | Persistent autonomous agent with state management |
+| `native_openhands` | On-demand | CodeAct — generates and executes Python code |
+| `simple` | On-demand | Single-turn chat, no tools |
+
+See the [User Guide](https://locus.github.io/Locus/user-guide/morning-digest/) and [Tutorials](https://locus.github.io/Locus/tutorials/) for detailed setup instructions.
+
+Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[locus.github.io/Locus](https://locus.github.io/Locus/)**.
+
+## Community
+
+- **GitHub:** [github.com/locus/Locus](https://github.com/locus/Locus)
+- **Discord:** [discord.gg/CMVBmDQ5Fj](https://discord.gg/CMVBmDQ5Fj)
+- **X / Twitter:** [@LocusAI](https://x.com/LocusAI)
+- **Docs:** [locus.github.io/Locus](https://locus.github.io/Locus/)
 
 ## Contributing
 
-Locus is at the planning stage. Feedback on the [scope](docs/locus/01-scope.md) and [command catalog](docs/locus/02-command-catalog.md) is very welcome, especially new test phrases and tricky edge cases. Please open an [issue](https://github.com/aryanjsx/AURA/issues).
+We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for incentives, contribution types, and the PR process.
+
+Quick start for contributors:
+
+```bash
+git clone https://github.com/locus/Locus.git
+cd Locus
+uv sync --extra dev
+uv run pre-commit install
+uv run pytest tests/ -v
+```
+
+Browse the [Roadmap](https://locus.github.io/Locus/development/roadmap/) for areas where help is needed. Comment **"take"** on any issue to get auto-assigned.
+
+## About
+
+Locus is part of [Intelligence Per Watt](https://www.intelligence-per-watt.ai/), a research initiative studying the intelligence efficiency of AI systems. The project is developed at [Hazy Research](https://hazyresearch.stanford.edu/) and the [Scaling Intelligence Lab](https://scalingintelligence.stanford.edu/) at [Stanford SAIL](https://ai.stanford.edu/).
+
+## Sponsors
+
+<p>
+  <a href="https://www.laude.org/">Laude Institute</a> &bull;
+  <a href="https://datascience.stanford.edu/marlowe">Stanford Marlowe</a> &bull;
+  <a href="https://cloud.google.com/">Google Cloud Platform</a> &bull;
+  <a href="https://lambda.ai/">Lambda Labs</a> &bull;
+  <a href="https://ollama.com/">Ollama</a> &bull;
+  <a href="https://research.ibm.com/">IBM Research</a> &bull;
+  <a href="https://hai.stanford.edu/">Stanford HAI</a>
+</p>
+
+## Citation
+```bibtex
+@misc{saadfalcon2026locuspersonalaipersonal,
+      title={Locus: Personal AI, On Personal Devices}, 
+      author={Jon Saad-Falcon and Avanika Narayan and Robby Manihani and Tanvir Bhathal and Herumb Shandilya and Hakki Orhun Akengin and Gabriel Bo and Andrew Park and Matthew Hart and Caia Costello and Chuan Li and Christopher Ré and Azalia Mirhoseini},
+      year={2026},
+      eprint={2605.17172},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2605.17172}, 
+}
+```
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
-
-<div align="center">
-
-**Locus**: your assistant, on your machine.
-
-Built by [@aryanjsx](https://github.com/aryanjsx)
-
-</div>
+[Apache 2.0](LICENSE)

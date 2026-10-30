@@ -1,0 +1,295 @@
+"""Tests for the telemetry SQLite store."""
+
+from __future__ import annotations
+
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from locus.core.events import EventBus, EventType
+from locus.core.types import TelemetryRecord
+from locus.telemetry.store import TelemetryStore
+
+
+class TestTelemetryStore:
+    def test_creates_table(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        rows = store._fetchall()
+        assert rows == []
+        store.close()
+
+    def test_uses_wal_with_normal_synchronous(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        journal_mode = store._conn.execute("PRAGMA journal_mode").fetchone()[0]
+        synchronous = store._conn.execute("PRAGMA synchronous").fetchone()[0]
+        busy_timeout = store._conn.execute("PRAGMA busy_timeout").fetchone()[0]
+
+        assert journal_mode.lower() == "wal"
+        assert synchronous == 1
+        assert busy_timeout == 5000
+        store.close()
+
+    def test_concurrent_record_writes_are_serialized(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+
+        def write_one(i: int) -> None:
+            store.record(
+                TelemetryRecord(
+                    timestamp=time.time(),
+                    model_id=f"model-{i}",
+                    engine="test",
+                )
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(write_one, range(32)))
+
+        assert len(store._fetchall()) == 32
+        store.close()
+
+    def test_record_values(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        rec = TelemetryRecord(
+            timestamp=time.time(),
+            model_id="qwen3:8b",
+            engine="ollama",
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            latency_seconds=0.5,
+            cost_usd=0.001,
+        )
+        store.record(rec)
+        rows = store._fetchall()
+        assert len(rows) == 1
+        assert rows[0][2] == "qwen3:8b"  # model_id column
+        store.close()
+
+    def test_bus_subscription(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        bus = EventBus()
+        store.subscribe_to_bus(bus)
+
+        rec = TelemetryRecord(
+            timestamp=time.time(),
+            model_id="test-model",
+            engine="vllm",
+        )
+        bus.publish(EventType.TELEMETRY_RECORD, {"record": rec})
+
+        rows = store._fetchall()
+        assert len(rows) == 1
+        assert rows[0][2] == "test-model"
+        store.close()
+
+    def test_bus_subscription_is_idempotent(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        bus = EventBus()
+        store.subscribe_to_bus(bus)
+        store.subscribe_to_bus(bus)
+
+        rec = TelemetryRecord(timestamp=time.time(), model_id="once", engine="test")
+        bus.publish(EventType.TELEMETRY_RECORD, {"record": rec})
+
+        assert len(store._fetchall()) == 1
+        store.close()
+
+    def test_resubscribe_moves_store_to_new_bus(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        old_bus = EventBus()
+        new_bus = EventBus()
+        store.subscribe_to_bus(old_bus)
+        store.subscribe_to_bus(new_bus)
+
+        rec = TelemetryRecord(timestamp=time.time(), model_id="new", engine="test")
+        old_bus.publish(EventType.TELEMETRY_RECORD, {"record": rec})
+        new_bus.publish(EventType.TELEMETRY_RECORD, {"record": rec})
+
+        assert len(store._fetchall()) == 1
+        store.close()
+
+    def test_close_unsubscribes_from_bus_and_is_idempotent(
+        self, tmp_path: Path
+    ) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        bus = EventBus()
+        store.subscribe_to_bus(bus)
+
+        store.close()
+        store.close()
+        bus.publish(
+            EventType.TELEMETRY_RECORD,
+            {
+                "record": TelemetryRecord(
+                    timestamp=time.time(), model_id="late", engine="test"
+                )
+            },
+        )
+
+        assert store._event_bus is None
+        assert bus._subscribers[EventType.TELEMETRY_RECORD] == []
+
+    def test_closed_store_rejects_new_subscription(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        store.close()
+
+        try:
+            store.subscribe_to_bus(EventBus())
+        except RuntimeError as exc:
+            assert str(exc) == "TelemetryStore is closed"
+        else:  # pragma: no cover - regression assertion
+            raise AssertionError("closed store accepted a new subscription")
+
+    def test_close_and_reopen(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        store = TelemetryStore(db_path)
+        rec = TelemetryRecord(timestamp=time.time(), model_id="m1", engine="e1")
+        store.record(rec)
+        store.close()
+
+        store2 = TelemetryStore(db_path)
+        rows = store2._fetchall()
+        assert len(rows) == 1
+        store2.close()
+
+    def test_metadata_json_roundtrip(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        rec = TelemetryRecord(
+            timestamp=time.time(),
+            model_id="m1",
+            engine="e1",
+            metadata={"key": "value", "nested": [1, 2, 3]},
+        )
+        store.record(rec)
+        import json
+
+        rows = store._fetchall()
+        meta = json.loads(rows[0][-1])  # metadata is last column
+        assert meta["key"] == "value"
+        assert meta["nested"] == [1, 2, 3]
+        store.close()
+
+    def test_recent_row_has_mining_session_id_column(self, tmp_path: Path) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        rec = TelemetryRecord(
+            timestamp=time.time(),
+            model_id="test-model",
+            engine="test-engine",
+            prompt_tokens=10,
+            completion_tokens=5,
+            latency_seconds=0.1,
+        )
+        store.record(rec)
+
+        rows = store.list_recent(limit=1)
+
+        assert rows[0]["mining_session_id"] is None
+        store.close()
+
+    def test_recent_row_can_be_tagged_with_mining_session_id(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        store = TelemetryStore(tmp_path / "test.db")
+        rec = TelemetryRecord(
+            timestamp=time.time(),
+            model_id="test-model",
+            engine="vllm-pearl-mining",
+            prompt_tokens=10,
+            completion_tokens=5,
+            latency_seconds=0.1,
+            mining_session_id="abc123",
+        )
+        store.record(rec)
+
+        rows = store.list_recent(limit=1)
+
+        assert rows[0]["mining_session_id"] == "abc123"
+        store.close()
+
+    def test_record_mining_stats_persists(self, tmp_path: Path) -> None:
+        from locus.mining._stubs import MiningStats
+
+        store = TelemetryStore(tmp_path / "test.db")
+        store.record_mining_stats(
+            MiningStats(
+                provider_id="vllm-pearl",
+                shares_submitted=42,
+                shares_accepted=40,
+            )
+        )
+
+        snapshots = store.list_recent_mining_stats(limit=1)
+
+        assert snapshots[0]["provider_id"] == "vllm-pearl"
+        assert snapshots[0]["shares_submitted"] == 42
+        assert snapshots[0]["shares_accepted"] == 40
+        store.close()
+
+
+class TestTelemetryRecordFields:
+    def test_tokens_per_joule_field_exists(self):
+        rec = TelemetryRecord(timestamp=1.0, model_id="test")
+        assert hasattr(rec, "tokens_per_joule")
+        assert rec.tokens_per_joule == 0.0
+
+    def test_tokens_per_joule_set(self):
+        rec = TelemetryRecord(timestamp=1.0, model_id="test", tokens_per_joule=80.0)
+        assert rec.tokens_per_joule == 80.0
+
+    def test_batching_delays_commit(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        # flush_interval_seconds=0 disables the background flusher so the
+        # buffered/flushed states below are deterministic, not a race.
+        store = TelemetryStore(db_path, batch_size=2, flush_interval_seconds=0)
+        rec = TelemetryRecord(timestamp=time.time(), model_id="m1", engine="e1")
+
+        store.record(rec)
+        # Should not be in DB yet because batch_size is 2 and we haven't flushed
+        # Need a separate connection to check because store._fetchall() calls flush()!
+        assert _count_rows_via_own_connection(db_path) == 0
+
+        # Hit batch size
+        store.record(rec)
+        assert _count_rows_via_own_connection(db_path) == 2
+        store.close()
+
+    def test_background_flush_makes_records_visible(self, tmp_path: Path) -> None:
+        # A partial batch must become visible to OTHER connections within the
+        # flush interval even if no further write ever arrives — the background
+        # flusher covers the "traffic stopped mid-batch" case that per-record
+        # stale checks cannot.
+        db_path = tmp_path / "test.db"
+        store = TelemetryStore(db_path, batch_size=50, flush_interval_seconds=0.05)
+        rec = TelemetryRecord(timestamp=time.time(), model_id="m1", engine="e1")
+        store.record(rec)
+
+        deadline = time.time() + 5.0
+        rows = 0
+        while time.time() < deadline:
+            rows = _count_rows_via_own_connection(db_path)
+            if rows:
+                break
+            time.sleep(0.02)
+        assert rows == 1
+        store.close()
+
+    def test_close_flushes_and_is_idempotent(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "test.db"
+        store = TelemetryStore(db_path, batch_size=50, flush_interval_seconds=0)
+        rec = TelemetryRecord(timestamp=time.time(), model_id="m1", engine="e1")
+        store.record(rec)
+        store.close()
+        assert _count_rows_via_own_connection(db_path) == 1
+        store.close()  # second close must be a no-op, not a ProgrammingError
+
+
+def _count_rows_via_own_connection(db_path: Path) -> int:
+    """Count telemetry rows through a separate connection (like the aggregator)."""
+    import contextlib
+    import sqlite3
+
+    # NB: sqlite3's ``with conn`` is a TRANSACTION context (it does not close);
+    # ``contextlib.closing`` actually closes the connection.
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        return len(conn.execute("SELECT * FROM telemetry").fetchall())
